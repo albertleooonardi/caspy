@@ -1,0 +1,66 @@
+# ============================================================
+# Caspy's Prompt Heist — root .gitignore
+# NOTE: .kiro/ is intentionally tracked (Kiro config, steering, hooks).
+# ============================================================
+
+# === Dependencies ===
+node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pnpm-store/
+
+# === Frontend (Astro) ===
+dist/
+.astro/
+.next/
+.cache/
+.parcel-cache/
+
+# === Solidity / Foundry (blockhain/) ===
+blockhain/cache/
+blockhain/out/
+blockhain/broadcast/
+blockhain/lib/
+blockhain/foundry-cache/
+
+# === Python (API) ===
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# === Environment / secrets ===
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# === OS / editor ===
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+
+# === Logs / temp ===
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.tmp/
+tmp/
+
+# === Bifrost (third-party LLM gateway; kept as a local clone) ===
+bifrost/

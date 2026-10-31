@@ -1,0 +1,8 @@
+---
+import Layout from '../layouts/Layout.astro';
+import App from '../components/App';
+export function getStaticPaths() { return ['play', 'gallery', 'rules', 'result', 'claim', 'privacy', 'terms'].map(page => ({ params: { page } })); }
+const page = Astro.params.page!;
+const names: Record<string, string> = { play: 'The heist', gallery: 'Wall of Heists', rules: 'How to play', result: 'Your heist', claim: 'Claim your collectible', privacy: 'Privacy', terms: 'Terms' };
+---
+<Layout title={`${names[page]} — Caspy’s Prompt Heist`}><App page={page} client:load /></Layout>
