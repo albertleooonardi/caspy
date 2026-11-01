@@ -1,51 +1,193 @@
 {
-  "setup_token": "change-this-setup-token",
-
   "providers": {
-    "groq": {
+    "openrouter": {
       "keys": [
-        { "name": "groq-caspy", "value": "env.GROQ_API_KEY", "weight": 1, "models": ["*"] }
+        {
+          "name": "openrouter-key",
+          "value": "env.OPEN_ROUTER_API_KEY",
+          "weight": 1,
+          "models": [
+            "nvidia/nemotron-3.5-lightning:free",
+            "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "nvidia/nemotron-3.5-super-vl:free",
+            "dots-studio/dots-3-note-preview:free"
+          ]
+        }
       ],
-      "network_config": { "default_request_timeout_in_seconds": 30 }
-    },
-    "openai": {
-      "keys": [
-        { "name": "openai-judge", "value": "env.OPENAI_API_KEY", "weight": 1, "models": ["*"] }
-      ],
-      "network_config": { "default_request_timeout_in_seconds": 60 }
-    },
-    "anthropic": {
-      "keys": [
-        { "name": "anthropic-fallback", "value": "env.ANTHROPIC_API_KEY", "weight": 1, "models": ["*"] }
-      ],
-      "network_config": { "default_request_timeout_in_seconds": 60 }
+      "network_config": {
+        "default_request_timeout_in_seconds": 60,
+        "max_retries": 0
+      }
     }
   },
-
   "config_store": {
     "enabled": true,
     "type": "sqlite",
-    "config": { "path": "./data/caspy-bifrost.db" }
+    "config": {
+      "path": "./data/caspy-bifrost.db"
+    }
   },
-
   "logs_store": {
     "enabled": true,
     "type": "sqlite",
-    "config": { "path": "./data/caspy-bifrost-logs.db" }
+    "config": {
+      "path": "./data/caspy-bifrost-logs.db"
+    }
   },
-
   "governance": {
     "budgets": [
-      { "id": "global-hourly", "max_limit": 20, "reset_duration": "1h" },
-      { "id": "global-daily", "max_limit": 200, "reset_duration": "1d" }
+      {
+        "id": "global-hourly",
+        "max_limit": 20,
+        "reset_duration": "1h",
+        "model_config_id": "caspy-global-openrouter"
+      },
+      {
+        "id": "global-daily",
+        "max_limit": 200,
+        "reset_duration": "1d",
+        "model_config_id": "caspy-global-openrouter"
+      },
+      {
+        "id": "caspy-daily",
+        "virtual_key_id": "vk-caspy",
+        "max_limit": 5,
+        "reset_duration": "1d"
+      },
+      {
+        "id": "judge-daily",
+        "virtual_key_id": "vk-judge",
+        "max_limit": 10,
+        "reset_duration": "1d"
+      }
+    ],
+    "auth_config": {
+      "is_enabled": true,
+      "admin_username": "env.BIFROST_ADMIN_USERNAME",
+      "admin_password": "env.BIFROST_ADMIN_PASSWORD"
+    },
+    "teams": [
+      {
+        "id": "caspy",
+        "name": "Caspy Prompt Heist"
+      }
+    ],
+    "rate_limits": [
+      {
+        "id": "caspy-minute",
+        "request_max_limit": 10,
+        "request_reset_duration": "1m"
+      },
+      {
+        "id": "judge-minute",
+        "request_max_limit": 10,
+        "request_reset_duration": "1m"
+      }
+    ],
+    "virtual_keys": [
+      {
+        "id": "vk-caspy",
+        "name": "Caspy actor",
+        "value": "env.BIFROST_CASPY_VK",
+        "team_id": "caspy",
+        "is_active": true,
+        "rate_limit_id": "caspy-minute",
+        "provider_configs": [
+          {
+            "provider": "openrouter",
+            "allowed_models": [
+              "nvidia/nemotron-3.5-lightning:free",
+              "nvidia/nemotron-3-ultra-550b-a55b:free"
+            ],
+            "key_ids": [
+              "*"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "vk-judge",
+        "name": "Caspy judge",
+        "value": "env.BIFROST_JUDGE_VK",
+        "team_id": "caspy",
+        "is_active": true,
+        "rate_limit_id": "judge-minute",
+        "provider_configs": [
+          {
+            "provider": "openrouter",
+            "allowed_models": [
+              "nvidia/nemotron-3.5-super-vl:free",
+              "dots-studio/dots-3-note-preview:free"
+            ],
+            "key_ids": [
+              "*"
+            ]
+          }
+        ]
+      }
+    ],
+    "routing_rules": [
+      {
+        "id": "caspy-route",
+        "name": "Caspy primary and fallback",
+        "enabled": true,
+        "scope": "virtual_key",
+        "scope_id": "vk-caspy",
+        "priority": 0,
+        "cel_expression": "true",
+        "targets": [
+          {
+            "provider": "openrouter",
+            "model": "nvidia/nemotron-3.5-lightning:free",
+            "weight": 1
+          }
+        ],
+        "fallbacks": [
+          "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"
+        ]
+      },
+      {
+        "id": "judge-route",
+        "name": "Judge primary and fallback",
+        "enabled": true,
+        "scope": "virtual_key",
+        "scope_id": "vk-judge",
+        "priority": 0,
+        "cel_expression": "true",
+        "targets": [
+          {
+            "provider": "openrouter",
+            "model": "nvidia/nemotron-3.5-super-vl:free",
+            "weight": 1
+          }
+        ],
+        "fallbacks": [
+          "openrouter/dots-studio/dots-3-note-preview:free"
+        ]
+      }
+    ],
+    "model_configs": [
+      {
+        "id": "caspy-global-openrouter",
+        "model_name": "*",
+        "provider": "openrouter",
+        "scope": "global",
+        "budget_ids": [
+          "global-hourly",
+          "global-daily"
+        ]
+      }
     ]
   },
-
   "client": {
     "drop_excess_requests": false,
-    "allowed_origins": ["*"],
+    "allowed_origins": [
+      "http://localhost:8080",
+      "http://127.0.0.1:8080"
+    ],
     "enable_logging": true,
     "enforce_auth_on_inference": true,
     "max_request_body_size_mb": 1
-  }
+  },
+  "$schema": "https://www.getbifrost.ai/schema"
 }

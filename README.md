@@ -1,6 +1,6 @@
 # Caspy's Prompt Heist 👻🍬
 
-> Meet Caspy! This adorable AI ghost is guarding rare Web3 candy. You have three chances to use your prompt engineering tricks to convince his LLM brain to yield. Outsmart him to earn a sweet **Treat** NFT minted to your wallet, or fail and get a cursed **Trick** NFT! A cozy Halloween prompt heist built with Astro.js and LiteLLM.
+> Meet Caspy! This adorable AI ghost is guarding rare Web3 candy. You have three chances to use your prompt engineering tricks to convince his LLM brain to yield. Outsmart him to earn a sweet **Treat** NFT minted to your wallet, or fail and get a cursed **Trick** NFT! A cozy Halloween prompt heist built with Astro.js and Bifrost.
 
 ## What is it?
 
@@ -64,6 +64,19 @@ cp .env.example .env   # fill in values
 npm install
 npm run dev
 ```
+
+### LLM gateway (Bifrost)
+
+```bash
+python3 scripts/bifrost_setup.py init
+# Fill OPEN_ROUTER_API_KEY in the root .env; configured models are free.
+python3 scripts/bifrost_setup.py check
+bash run-bifrost.sh
+```
+
+The gateway runs at <http://127.0.0.1:8080> with separate actor/judge virtual
+keys, free fallback routes, and shared OpenRouter budgets. See [the Bifrost guide](docs/bifrost.md)
+for credentials, smoke tests, configuration updates, and current integration gaps.
 
 ### Smart contracts (Foundry)
 

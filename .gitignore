@@ -67,6 +67,6 @@ bifrost/
 
 # === Bifrost runtime (real config + sqlite state) ===
 # The example template (bifrost.config.example.json) is tracked; the copied
-# config.json holds the setup_token and is NOT committed.
+# config.json and SQLite state are private runtime files and are NOT committed.
 /config.json
 /data/

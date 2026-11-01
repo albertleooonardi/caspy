@@ -15,6 +15,7 @@ Open http://localhost:4321. `npm run build` outputs the static site to `dist/`; 
 
 - `/` — landing, how to play, collectibles, FAQ
 - `/play` — streaming chat, three candy attempt counters, 500-character limit
+- `/how-to-play` — 56-second animated, narrated demo explainer, chapter links, and written instructions
 - `/result` — Treat, Trick, pending-review, and unavailable states
 - `/claim` — approval, pending, confirmed, retry, and transaction explorer states
 - `/gallery` — season-locked Wall of Heists with optional, clearly labeled illustrative examples and filters
@@ -55,3 +56,24 @@ npm run build
 ```
 
 Tests cover multiline SSE, CRLF framing, split UTF-8, interrupted streams, invalid server attempt counts, and both full three-turn demo outcomes with persisted transcripts. Desktop presentation was inspected in Safari. Mobile breakpoints and the full browser click-through still need browser verification. Layouts include keyboard focus styles, semantic controls, native dialog focus management, disclosure labels, and reduced-motion support. Performance and accessibility targets from the PRD still need a production audit with the live integrations.
+
+## Animated walkthrough
+
+The homepage includes the tutorial video, and the navigation and play screen link
+to `/how-to-play`. The guide has native video controls, chapter shortcuts, English
+WebVTT captions, a poster, a download link, and a written alternative. It does not
+autoplay. The animated explainer combines Caspy artwork, motion graphics, and recorded
+demo UI. It includes energetic English narration, an original Halloween soundtrack,
+typed chat bubbles, candy counters,
+cursor highlights, and smooth transitions. It does not demonstrate live AI,
+wallet authorization, or real minting.
+
+The 56-second, 24 fps H.264/AAC showcase and related assets use the
+`caspy-showcase` prefix in `public/videos/` (about 16.8 MB total). Instructions
+are also burned into the video, with a WebVTT caption track and a written guide.
+The original `caspy-walkthrough` files remain for existing download links.
+Update the video and its seven chapter times together when gameplay changes.
+
+The Halloween audio edit uses a brighter Eddy voice, celesta/bell arpeggios,
+soft organ and bass, and airy textures. Automatic music ducking keeps narration
+clear. The video keeps its 56-second animation, captions, and chapter timing.
