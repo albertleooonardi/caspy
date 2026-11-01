@@ -1,0 +1,51 @@
+{
+  "setup_token": "change-this-setup-token",
+
+  "providers": {
+    "groq": {
+      "keys": [
+        { "name": "groq-caspy", "value": "env.GROQ_API_KEY", "weight": 1, "models": ["*"] }
+      ],
+      "network_config": { "default_request_timeout_in_seconds": 30 }
+    },
+    "openai": {
+      "keys": [
+        { "name": "openai-judge", "value": "env.OPENAI_API_KEY", "weight": 1, "models": ["*"] }
+      ],
+      "network_config": { "default_request_timeout_in_seconds": 60 }
+    },
+    "anthropic": {
+      "keys": [
+        { "name": "anthropic-fallback", "value": "env.ANTHROPIC_API_KEY", "weight": 1, "models": ["*"] }
+      ],
+      "network_config": { "default_request_timeout_in_seconds": 60 }
+    }
+  },
+
+  "config_store": {
+    "enabled": true,
+    "type": "sqlite",
+    "config": { "path": "./data/caspy-bifrost.db" }
+  },
+
+  "logs_store": {
+    "enabled": true,
+    "type": "sqlite",
+    "config": { "path": "./data/caspy-bifrost-logs.db" }
+  },
+
+  "governance": {
+    "budgets": [
+      { "id": "global-hourly", "max_limit": 20, "reset_duration": "1h" },
+      { "id": "global-daily", "max_limit": 200, "reset_duration": "1d" }
+    ]
+  },
+
+  "client": {
+    "drop_excess_requests": false,
+    "allowed_origins": ["*"],
+    "enable_logging": true,
+    "enforce_auth_on_inference": true,
+    "max_request_body_size_mb": 1
+  }
+}
