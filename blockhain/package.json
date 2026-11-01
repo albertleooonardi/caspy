@@ -1,0 +1,31 @@
+{
+  "name": "caspy-heist-contracts",
+  "version": "1.0.0",
+  "description": "ERC-721 NFT contracts for Caspy's Prompt Heist game",
+  "main": "index.js",
+  "scripts": {
+    "build": "forge build",
+    "test": "forge test",
+    "test:verbose": "forge test -vv",
+    "test:trace": "forge test -vvv",
+    "coverage": "forge coverage",
+    "deploy:base": "forge script script/Deploy.s.sol --rpc-url base --broadcast --verify",
+    "deploy:base-sepolia": "forge script script/Deploy.s.sol --rpc-url base_sepolia --broadcast",
+    "deploy:local": "forge script script/Deploy.s.sol --rpc-url localhost --broadcast",
+    "format": "forge fmt",
+    "lint": "solhint 'src/**/*.sol'",
+    "clean": "forge clean && rm -rf cache"
+  },
+  "keywords": [
+    "ethereum",
+    "nft",
+    "erc721",
+    "foundry",
+    "solidity"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "solhint": "^4.0.0"
+  }
+}
