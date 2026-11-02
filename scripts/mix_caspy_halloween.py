@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
-"""Compose a music-only Caspy Halloween soundtrack. No speech inputs are read.
-
-Usage: python3 scripts/mix_caspy_halloween.py path/to/scenes.json output-directory
-All source audio is local. Uses the Python standard library only.
+"""Original Halloween score + synthesized wordless ghost choir. No speech input.
+Usage: python3 scripts/mix_caspy_halloween.py storyboard.json output-directory
 """
 import array
 import json
@@ -13,100 +11,81 @@ import sys
 import wave
 
 RATE = 44100
-DURATION = 56
-COUNT = RATE * DURATION
 TAU = math.tau
-
-
-def write_wav(path, data, channels):
-    with wave.open(str(path), 'wb') as output:
-        output.setnchannels(channels)
-        output.setsampwidth(2)
-        output.setframerate(RATE)
-        samples = array.array('h', (round(max(-0.97, min(0.97, x)) * 32767) for x in data))
-        if sys.byteorder != 'little':
-            samples.byteswap()
-        output.writeframes(samples.tobytes())
 
 
 def main():
     scenes = json.loads(Path(sys.argv[1]).read_text())
-    output = Path(sys.argv[2])
-    output.mkdir(parents=True, exist_ok=True)
-    music = array.array('f', [0]) * COUNT
-    chords = [(50, 53, 57), (46, 50, 53), (43, 46, 50), (45, 49, 52)]
+    duration = sum(scene['seconds'] for scene in scenes)
+    count = RATE * duration
+    output = Path(sys.argv[2]); output.mkdir(parents=True, exist_ok=True)
+    music = array.array('f', [0]) * count
+    chords = [(50,53,57),(46,50,53),(43,46,50),(45,49,52)]
 
     def tone(start, seconds, midi, amplitude, kind):
-        freq = 440 * 2 ** ((midi - 69) / 12)
-        first = int(start * RATE)
-        for i in range(min(int(seconds * RATE), COUNT - first)):
-            t = i / RATE
-            phase = TAU * freq * t
+        frequency = 440 * 2 ** ((midi-69)/12)
+        first = int(start*RATE)
+        for i in range(max(0,min(int(seconds*RATE), count-first))):
+            t = i/RATE
+            phase = TAU * frequency * t
             if kind == 'bell':
-                value = (math.sin(phase) * math.exp(-5.0 * t)
-                         + .30 * math.sin(phase * 2.005) * math.exp(-8 * t)
-                         + .10 * math.sin(phase * 3.01) * math.exp(-12 * t))
-                value *= min(1, t / .005)
+                value = (math.sin(phase)*math.exp(-5*t) + .28*math.sin(phase*2.005)*math.exp(-8*t) + .09*math.sin(phase*3.01)*math.exp(-12*t)) * min(1,t/.005)
+            elif kind == 'choir':
+                # A vowel-like harmonic pad, with slow breath and pitch movement.
+                # Synthesized oscillators only: no narrator, lyrics or speech files.
+                phase += .06*math.sin(TAU*4.2*t)+.16*math.sin(TAU*.35*t)
+                envelope = max(0,min(1,t/.8,(seconds-t)/1.1))
+                value = (.55*math.sin(phase)+.28*math.sin(phase*2)+.12*math.sin(phase*3)+.05*math.sin(phase*5))*envelope
+                value *= .68+.32*math.sin(math.pi*min(1,t/seconds))
             else:
-                envelope = min(1, t / .15, (seconds - t) / .28)
-                value = (.72 * math.sin(phase) + .17 * math.sin(2 * phase)
-                         + .06 * math.sin(3 * phase)) * max(0, envelope)
-                value *= .91 + .09 * math.sin(TAU * 3.8 * t)
-            music[first + i] += value * amplitude
+                envelope = max(0,min(1,t/.12,(seconds-t)/.3))
+                value = (.70*math.sin(phase)+.18*math.sin(phase*2)+.07*math.sin(phase*3))*envelope
+            music[first+i] += value*amplitude
 
-    # A D-minor / B-flat / G-minor / A cadence, repeated once per eight-second chapter.
-    for bar in range(28):
-        chord = chords[bar % 4]
-        for note in chord:
-            tone(bar * 2, 2.04, note + 12, .031, 'organ')
-        tone(bar * 2, 1.8, chord[0] - 12, .042, 'organ')
-        for beat, degree in enumerate([0, 2, 1, 2]):
-            tone(bar * 2 + beat * .5, 1.15, chord[degree] + 24, .075, 'bell')
-        if bar % 4 == 0:
-            tone(bar * 2 + .05, 1.45, chord[0] + 36, .033, 'bell')
-    print('Composed original celesta, organ, and bass layers.', flush=True)
+    for bar in range(math.ceil(duration/2)):
+        chord = chords[bar%4]
+        for note in chord: tone(bar*2,2.08,note+12,.024,'organ')
+        tone(bar*2,1.8,chord[0]-12,.040,'organ')
+        for beat,degree in enumerate([0,2,1,2]): tone(bar*2+beat*.5,1.05,chord[degree]+24,.065,'bell')
+        if bar%2 == 0:
+            tone(bar*2,4.2,chord[0]+12,.055,'choir')
+            tone(bar*2+.06,4.0,chord[1]+12,.030,'choir')
+    print('Composed bells, organ, bass and wordless ghost choir.',flush=True)
 
-    rng = random.Random(20261101)
-    low = 0.0
-    for i in range(COUNT):
-        t = i / RATE
-        noise = rng.uniform(-1, 1)
-        low += .035 * (noise - low)
-        wind = low * (.008 + .018 * (0.5 + 0.5 * math.sin(TAU * t / 8)) ** 3)
-        beat = t % .5
-        shaker = (noise - low) * .007 * math.exp(-32 * beat)
-        music[i] += wind + shaker
-
-    # Soft scene-entry bells and bubble pops accent the bouncy typography.
-    for chapter in range(7):
-        for delay, pitch in [(0.3, 81), (0.65, 86), (1.1, 89)]:
-            tone(chapter * 8 + delay, .4, pitch, .025, 'bell')
-    left, right = array.array('f'), array.array('f')
-    for i in range(COUNT):
-        t = i / RATE
-        fade = max(0, min(1, t / .7, (DURATION - t) / 1.5))
-        pan = .10 * math.sin(TAU * t / 12)
-        value = music[i] * fade
-        left.append(value * (1 - pan))
-        right.append(value * (1 + pan))
-    peak = max(max(abs(x) for x in left), max(abs(x) for x in right))
-    rms = math.sqrt(sum(l*l + r*r for l,r in zip(left,right)) / (COUNT*2))
-    master = min(.70 / peak, 10 ** (-22 / 20) / rms)
-    interleaved = array.array('f')
-    for l, r in zip(left, right):
-        interleaved.extend((l * master, r * master))
-    write_wav(output / 'soundtrack.wav', interleaved, 2)
-    report = {
-        'duration_seconds': DURATION, 'sample_rate': RATE, 'channels': 2,
-        'speech_tracks': 0, 'speech_inputs_read': 0,
-        'music': 'Original D-minor celesta, organ, bass, wind, and transition chimes',
-        'peak_dbfs': round(20 * math.log10(peak * master), 2),
-        'rms_dbfs': round(20 * math.log10(rms * master), 2),
-        'fade_in_seconds': .7, 'fade_out_seconds': 1.5,
-    }
-    (output / 'audio-qa.json').write_text(json.dumps(report, indent=2) + '\n')
-    print(json.dumps(report), flush=True)
+    rng = random.Random(20261102)
+    starts=[]; elapsed=0
+    for scene in scenes: starts.append(elapsed); elapsed+=scene['seconds']
+    low=0.0
+    for i in range(count):
+        t=i/RATE; noise=rng.uniform(-1,1); low+=.025*(noise-low)
+        wind=low*(.012+.030*(.5+.5*math.sin(TAU*t/10))**3)
+        shaker=(noise-low)*.006*math.exp(-35*(t%.5))
+        music[i]+=wind+shaker
+    for start in starts:
+        for delay,note in [(.28,81),(.50,86),(1.05,89)]: tone(start+delay,.38,note,.024,'bell')
+        if start>0:
+            first=int((start-.40)*RATE)
+            for n in range(int(.40*RATE)):
+                t=n/RATE; envelope=(t/.4)**2*(1-t/.4)
+                music[first+n]+=rng.uniform(-1,1)*envelope*.11
+    # A tiny stereo echo softens the choir and leaves the typography in front.
+    left,right=array.array('f'),array.array('f'); delay=int(RATE*.11)
+    for i,value in enumerate(music):
+        t=i/RATE; fade=max(0,min(1,t/1.2,(duration-t)/2.0)); pan=.15*math.sin(TAU*t/13)
+        echo=music[i-delay]*.17 if i>=delay else 0
+        left.append((value*(1-pan)+echo)*fade)
+        right.append((value*(1+pan)+echo*.8)*fade)
+    peak=max(max(map(abs,left)),max(map(abs,right)))
+    rms=math.sqrt(sum(l*l+r*r for l,r in zip(left,right))/(count*2))
+    master=min(.78/peak,10**(-20.5/20)/rms)
+    pcm=array.array('h')
+    for l,r in zip(left,right): pcm.extend((round(l*master*32767),round(r*master*32767)))
+    if sys.byteorder!='little': pcm.byteswap()
+    with wave.open(str(output/'soundtrack.wav'),'wb') as target:
+        target.setnchannels(2);target.setsampwidth(2);target.setframerate(RATE);target.writeframes(pcm.tobytes())
+    report={'duration_seconds':duration,'sample_rate':RATE,'channels':2,'speech_tracks':0,'speech_inputs_read':0,'wordless_choir':'Synthesized vowel-like oscillators; no spoken words', 'peak_dbfs':round(20*math.log10(peak*master),2),'rms_dbfs':round(20*math.log10(rms*master),2),'clipped_samples':sum(abs(x)>=32767 for x in pcm),'chapter_starts':starts,'seed':20261102}
+    (output/'audio-qa.json').write_text(json.dumps(report,indent=2)+'\n')
+    print(json.dumps(report),flush=True)
 
 
-if __name__ == '__main__':
-    main()
+if __name__=='__main__': main()

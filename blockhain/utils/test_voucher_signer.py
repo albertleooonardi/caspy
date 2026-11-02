@@ -1,102 +1,27 @@
-#!/usr/bin/env python3
-"""Unit tests for EIP-712 Voucher Signer"""
-
 import pytest
-from datetime import datetime, timedelta
 from voucher_signer import VoucherSigner
-from eth_account.messages import encode_typed_data
+KEY='0x'+'01'*32
+ADDRESS='0x'+'ab'*20
+CONTRACT='0x'+'cd'*20
+HASH='0x'+'12'*32
 
+def signed(signer,score=92):
+    return signer.create_voucher(ADDRESS,score,HASH,HASH,HASH,HASH,'http://localhost/metadata.json',1,2000000000)
 
-PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb476cad3623065be2f4ac1e9c84d"
-CONTRACT_ADDRESS = "0x1234567890123456789012345678901234567890"
-CHAIN_ID = 8453
-RECIPIENT = "0xabababababababababababababababababababab"
-SESSION_ID = "0x0000000000000000000000000000000000000000000000000000000000000001"
+def test_commitments_are_signed():
+    signer=VoucherSigner(KEY,CONTRACT,31337)
+    result=signed(signer)
+    assert result['voucher']['grade']==4
+    assert signer.verify_voucher(result['voucher'],result['signature'])[0]
+    for field in ('imageHash','metadataHash','promptHash','uriHash'):
+        changed={**result['voucher'],field:'0x'+'34'*32}
+        assert not signer.verify_voucher(changed,result['signature'])[0]
+    assert not VoucherSigner(KEY,CONTRACT,8453).verify_voucher(result['voucher'],result['signature'])[0]
 
+@pytest.mark.parametrize('score,grade',[(0,1),(59,1),(60,2),(74,2),(75,3),(89,3),(90,4),(100,4)])
+def test_grade(score,grade):
+    assert signed(VoucherSigner(KEY,CONTRACT,31337),score)['voucher']['grade']==grade
 
-class TestVoucherSigner:
-    """Test voucher signing functionality."""
-
-    @pytest.fixture
-    def signer(self):
-        """Create a voucher signer instance."""
-        return VoucherSigner(
-            private_key=PRIVATE_KEY,
-            contract_address=CONTRACT_ADDRESS,
-            chain_id=CHAIN_ID,
-        )
-
-    def test_init_with_valid_key(self):
-        """Test initialization with valid private key."""
-        signer = VoucherSigner(
-            private_key=PRIVATE_KEY,
-            contract_address=CONTRACT_ADDRESS,
-            chain_id=CHAIN_ID,
-        )
-        assert signer.contract_address == CONTRACT_ADDRESS.lower()
-        assert signer.chain_id == CHAIN_ID
-
-    def test_create_voucher_treat(self, signer):
-        """Test creating a Treat voucher."""
-        deadline = int((datetime.now() + timedelta(hours=24)).timestamp())
-
-        result = signer.create_voucher(
-            to=RECIPIENT,
-            tier=0,
-            session_id=SESSION_ID,
-            nonce=1,
-            deadline=deadline,
-        )
-
-        assert "voucher" in result
-        assert "signature" in result
-        assert result["voucher"]["to"] == RECIPIENT.lower()
-        assert result["voucher"]["tier"] == 0
-        assert result["signature"].startswith("0x")
-
-    def test_create_voucher_trick(self, signer):
-        """Test creating a Trick voucher."""
-        deadline = int((datetime.now() + timedelta(hours=24)).timestamp())
-
-        result = signer.create_voucher(
-            to=RECIPIENT,
-            tier=1,
-            session_id=SESSION_ID,
-            nonce=1,
-            deadline=deadline,
-        )
-
-        assert result["voucher"]["tier"] == 1
-
-    def test_verify_valid_voucher(self, signer):
-        """Test verifying a valid voucher."""
-        deadline = int((datetime.now() + timedelta(hours=24)).timestamp())
-
-        result = signer.create_voucher(
-            to=RECIPIENT,
-            tier=0,
-            session_id=SESSION_ID,
-            nonce=1,
-            deadline=deadline,
-        )
-
-        is_valid, recovered = signer.verify_voucher(result["voucher"], result["signature"])
-        assert is_valid is True
-        assert recovered.lower() == signer.account.address.lower()
-
-    def test_invalid_tier(self, signer):
-        """Test that invalid tier raises error."""
-        deadline = int((datetime.now() + timedelta(hours=24)).timestamp())
-
-        with pytest.raises(ValueError, match="Invalid tier"):
-            signer.create_voucher(
-                to=RECIPIENT,
-                tier=99,
-                session_id=SESSION_ID,
-                nonce=1,
-                deadline=deadline,
-            )
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+@pytest.mark.parametrize('score',[-1,101,True,1.5])
+def test_rejects_invalid_score(score):
+    with pytest.raises(ValueError): signed(VoucherSigner(KEY,CONTRACT,31337),score)

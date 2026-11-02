@@ -22,7 +22,7 @@ class FakeGateway:
     def judge(self, messages):
         if self.failure == 'judge':
             raise ValueError('private provider error')
-        return dict(verdict=self.verdict, confidence=self.confidence, exploit_flag=self.exploit, category='other')
+        return dict(verdict=self.verdict, confidence=self.confidence, exploit_flag=self.exploit, category='other',candy_scores={'creativity':18,'coherence':18,'specificity':18})
 
 
 class GamesTest(unittest.TestCase):

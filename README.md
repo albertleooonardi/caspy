@@ -49,6 +49,20 @@ caspy/
 
 > `bifrost/` is the third-party [maximhq/bifrost](https://github.com/maximhq/bifrost) LLM gateway, kept as a local clone (it is the stack the API uses). It is intentionally excluded from this repo via `.gitignore`.
 
+## Accounts and research platform
+
+Caspy now includes email/password registration and login, contributor accounts,
+organization-scoped research workspaces, optional per-heist research and commercial
+consent, human review, model metrics, and a reviewed dataset catalog with manual
+licensing requests and authorized JSON downloads. Research sharing never affects
+your game result or NFT eligibility. Dataset redaction requires human review and
+does not guarantee anonymity. Payment processing and model training are not connected.
+
+Run `bash run-heist.sh`, open `/register`, and choose **Play & contribute** or
+**Evaluate AI**. Research tools are at `/research`, datasets at `/datasets`, and
+consent withdrawal at `/account`. See [the platform guide](docs/platform.md) for
+the complete workflow, verification and local-development limits.
+
 ## Getting started
 
 ### Prerequisites
@@ -61,22 +75,23 @@ caspy/
 For **live Caspy gameplay with local NFT minting**, run:
 
 ```bash
-bash run-heist.sh --nft
+bash run-heist.sh
 ```
 
-Open <http://localhost:4321/play>, connect the local test wallet, play your heist,
+Register or sign in at <http://localhost:4321/register>, then open `/play`,
+connect an available local test wallet, and play your heist,
 then claim your Treat or Trick on Anvil (chain 31337). The launcher builds and
 deploys the NFT contract and connects wallet sign-in, server vouchers and mint
 confirmation. No real funds or private keys are required. See the
 [local NFT guide](docs/nft-local.md) for setup, persistence and verification.
 
-For the **local heist with live AI through Bifrost**, run from the project root:
+For **AI-only gameplay without blockchain or NFTs**, run from the project root:
 
 ```bash
-bash run-heist.sh
+bash run-heist.sh --ai-only
 ```
 
-Open <http://localhost:4321/play> and choose **Start an AI heist**. This starts
+Sign in, then open <http://localhost:4321/play> and choose **Start an AI heist**. This starts
 Bifrost (or reuses it on port 8080), the Python game API on port 8000, and Astro
 on port 4321. It finds Node/npm installed with nvm even in an IDE shell. The root
 `.env` must already pass `python3 scripts/bifrost_setup.py check`; see the gateway
@@ -139,3 +154,17 @@ See [`PRD.md`](./PRD.md) for the full specification, threat model, and rollout p
 ## Disclaimer
 
 NFTs have no promised financial value. This is a free-to-play, skill-based game; gas fees only.
+
+### Prompt-generated candy NFTs
+
+Run the full local stack with `bash run-heist.sh`. Winning prompts now earn a
+recorded C/B/A/S grade and one FLUX.1-dev candy; losses receive no NFT. Visit
+`/result` to generate and mint, `/collection` to manage prompt access/listing, and
+`/marketplace` to trade with local test ETH. The launcher deploys the v2 candy
+contract and marketplace while preserving older deployment state.
+
+Add server-side `HF_TOKEN` to root `.env` when ready, with Inference Providers
+permission and provider credits. Install image dependencies using
+`.venv/bin/python -m pip install -r scripts/requirements-candy.txt`. No generated
+reward image is available until a winner explicitly requests hosted generation.
+See [candy setup and limits](docs/candy.md) and PRD section 21.

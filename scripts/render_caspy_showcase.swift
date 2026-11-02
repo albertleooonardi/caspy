@@ -1,270 +1,256 @@
-// Caspy text-led explainer: original vector motion and a music-only soundtrack.
-// No recorded screens, pointers, or spoken audio.
-// Usage: executable scenes.json character.png capture-directory output-directory [--stills]
+// Render Caspy's kinetic typography walkthrough. Native vector animation,
+// illustrative UI, and a supplied original music/wordless-choir WAV; no narration.
+// Usage: executable storyboard.json character.png soundtrack.wav output-dir [--stills]
 import AppKit
 import AVFoundation
 import ImageIO
 
-struct Scene: Decodable { let title: String; let caption: String; let seconds: Int }
+struct Scene: Decodable {
+    let id: String; let seconds: Int; let label: String; let kicker: String
+    let headline: String; let body: String; let tip: String; let action: String; let href: String
+}
 let args = CommandLine.arguments
-guard args.count >= 5 else { fatalError("Expected scene, character, capture, and output paths") }
+guard args.count >= 5 else { fatalError("Expected storyboard, character, soundtrack and output paths") }
 let scenes = try JSONDecoder().decode([Scene].self, from: Data(contentsOf: URL(fileURLWithPath: args[1])))
 let output = URL(fileURLWithPath: args[4], isDirectory: true)
 try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
-let W: CGFloat = 1440, H: CGFloat = 810
-let fps: Int32 = 24
-let duration: Double = 56
-let ink = NSColor(red:0.173,green:0.110,blue:0.247,alpha:1)
-let purple = NSColor(red:0.43,green:0.30,blue:0.58,alpha:1)
-let muted = NSColor(red:0.45,green:0.35,blue:0.51,alpha:1)
-let orange = NSColor(red:0.97,green:0.49,blue:0.26,alpha:1)
-let lavender = NSColor(red:0.92,green:0.88,blue:0.96,alpha:1)
-let paper = NSColor(red:0.973,green:0.958,blue:0.985,alpha:1)
-func rect(_ x:CGFloat,_ y:CGFloat,_ w:CGFloat,_ h:CGFloat)->CGRect { CGRect(x:x,y:H-y-h,width:w,height:h) }
-func clamp(_ x:Double)->Double { min(1,max(0,x)) }
-func ease(_ x:Double)->Double { let t=clamp(x);return 1-pow(1-t,3) }
-func smooth(_ x:Double)->Double { let t=clamp(x);return t*t*(3-2*t) }
-func load(_ path:String)->CGImage { CGImageSourceCreateImageAtIndex(CGImageSourceCreateWithURL(URL(fileURLWithPath:path) as CFURL,nil)!,0,nil)! }
-func color(_ c:NSColor,_ alpha:Double=1)->CGColor { c.withAlphaComponent(CGFloat(alpha)).cgColor }
-func round(_ c:CGContext,_ r:CGRect,_ radius:CGFloat=20,_ fill:NSColor=NSColor.white,_ alpha:Double=1) {
-    c.setFillColor(color(fill,alpha));c.addPath(CGPath(roundedRect:r,cornerWidth:radius,cornerHeight:radius,transform:nil));c.fillPath()
+let W: CGFloat = 1600, H: CGFloat = 900
+let fps: Int32 = 30
+let duration = Double(scenes.reduce(0) { $0 + $1.seconds })
+let starts = scenes.indices.map { Double(scenes.prefix($0).reduce(0) { $0 + $1.seconds }) }
+let ink = NSColor(srgbRed:0.105,green:0.067,blue:0.17,alpha:1)
+let dark = NSColor(srgbRed:0.16,green:0.095,blue:0.235,alpha:1)
+let purple = NSColor(srgbRed:0.49,green:0.31,blue:0.66,alpha:1)
+let lilac = NSColor(srgbRed:0.79,green:0.67,blue:0.94,alpha:1)
+let lavender = NSColor(srgbRed:0.93,green:0.885,blue:0.975,alpha:1)
+let cream = NSColor(srgbRed:0.985,green:0.96,blue:0.91,alpha:1)
+let orange = NSColor(srgbRed:1,green:0.58,blue:0.33,alpha:1)
+let muted = NSColor(srgbRed:0.79,green:0.73,blue:0.85,alpha:1)
+let green = NSColor(srgbRed:0.73,green:0.86,blue:0.60,alpha:1)
+func r(_ x:CGFloat,_ y:CGFloat,_ w:CGFloat,_ h:CGFloat)->CGRect { CGRect(x:x,y:H-y-h,width:w,height:h) }
+func clamp(_ v:Double)->Double { min(1,max(0,v)) }
+func ease(_ v:Double)->Double { 1-pow(1-clamp(v),3) }
+func smooth(_ v:Double)->Double { let t=clamp(v); return t*t*(3-2*t) }
+func cg(_ color:NSColor,_ alpha:Double=1)->CGColor { color.withAlphaComponent(CGFloat(alpha)).cgColor }
+func box(_ c:CGContext,_ rect:CGRect,_ color:NSColor,_ radius:CGFloat=24,_ alpha:Double=1) {
+    c.setFillColor(cg(color,alpha)); c.addPath(CGPath(roundedRect:rect,cornerWidth:radius,cornerHeight:radius,transform:nil)); c.fillPath()
 }
-func text(_ c:CGContext,_ value:String,_ x:CGFloat,_ y:CGFloat,_ size:CGFloat,_ width:CGFloat=1300,_ height:CGFloat=160,_ shade:NSColor=ink,_ weight:NSFont.Weight = .regular,_ alpha:Double=1,_ alignment:NSTextAlignment = .left) {
-    let p=NSMutableParagraphStyle();p.lineSpacing=3;p.alignment=alignment
-    NSGraphicsContext.saveGraphicsState();NSGraphicsContext.current=NSGraphicsContext(cgContext:c,flipped:false)
-    NSAttributedString(string:value,attributes:[.font:NSFont.systemFont(ofSize:size,weight:weight),.foregroundColor:shade.withAlphaComponent(CGFloat(alpha)),.paragraphStyle:p]).draw(in:rect(x,y,width,height))
+func stroke(_ c:CGContext,_ rect:CGRect,_ color:NSColor,_ width:CGFloat=2,_ radius:CGFloat=24,_ alpha:Double=1) {
+    c.setStrokeColor(cg(color,alpha)); c.setLineWidth(width); c.addPath(CGPath(roundedRect:rect,cornerWidth:radius,cornerHeight:radius,transform:nil)); c.strokePath()
+}
+func txt(_ c:CGContext,_ value:String,_ x:CGFloat,_ y:CGFloat,_ size:CGFloat,_ width:CGFloat,_ height:CGFloat,_ shade:NSColor=cream,_ weight:NSFont.Weight = .regular,_ align:NSTextAlignment = .left,_ alpha:Double=1,_ tracking:CGFloat=0) {
+    let style=NSMutableParagraphStyle(); style.lineSpacing=6; style.alignment=align; style.lineBreakMode = .byWordWrapping
+    let font=NSFont.systemFont(ofSize:size,weight:weight)
+    NSGraphicsContext.saveGraphicsState(); NSGraphicsContext.current=NSGraphicsContext(cgContext:c,flipped:false)
+    NSAttributedString(string:value,attributes:[.font:font,.foregroundColor:shade.withAlphaComponent(CGFloat(alpha)),.paragraphStyle:style,.kern:tracking]).draw(in:r(x,y,width,height))
     NSGraphicsContext.restoreGraphicsState()
 }
-func outline(_ c:CGContext,_ r:CGRect,_ radius:CGFloat,_ shade:NSColor,_ line:CGFloat=2,_ alpha:Double=1) {
-    c.setStrokeColor(color(shade,alpha));c.setLineWidth(line);c.addPath(CGPath(roundedRect:r,cornerWidth:radius,cornerHeight:radius,transform:nil));c.strokePath()
+func pop(_ c:CGContext,_ area:CGRect,_ t:Double,_ delay:Double=0,_ draw:()->Void) {
+    guard t>delay else { return }
+    let elapsed=t-delay, p=1-exp(-7*elapsed)*cos(9*elapsed), scale=CGFloat(0.94+0.06*p)
+    c.saveGState(); c.setAlpha(CGFloat(ease(elapsed/0.35)))
+    c.translateBy(x:area.midX,y:area.midY-CGFloat(28*(1-p))); c.scaleBy(x:scale,y:scale); c.translateBy(x:-area.midX,y:-area.midY)
+    draw(); c.restoreGState()
 }
-func trimCharacter(_ image:CGImage)->CGImage {
+func pill(_ c:CGContext,_ title:String,_ x:CGFloat,_ y:CGFloat,_ width:CGFloat,_ fill:NSColor=purple,_ shade:NSColor=cream) {
+    box(c,r(x,y,width,43),fill,22); txt(c,title,x+17,y+11,17,width-34,28,shade,.semibold)
+}
+func star(_ c:CGContext,_ x:CGFloat,_ y:CGFloat,_ radius:CGFloat,_ phase:Double,_ alpha:Double=1) {
+    let s=radius*CGFloat(0.78+0.22*sin(phase)); let p=CGMutablePath()
+    p.move(to:CGPoint(x:x,y:H-y+s)); p.addQuadCurve(to:CGPoint(x:x+s,y:H-y),control:CGPoint(x:x+s*0.2,y:H-y+s*0.2));p.addQuadCurve(to:CGPoint(x:x,y:H-y-s),control:CGPoint(x:x+s*0.2,y:H-y-s*0.2));p.addQuadCurve(to:CGPoint(x:x-s,y:H-y),control:CGPoint(x:x-s*0.2,y:H-y-s*0.2));p.addQuadCurve(to:CGPoint(x:x,y:H-y+s),control:CGPoint(x:x-s*0.2,y:H-y+s*0.2))
+    c.setFillColor(cg(lilac,alpha));c.addPath(p);c.fillPath()
+}
+func candy(_ c:CGContext,_ x:CGFloat,_ y:CGFloat,_ size:CGFloat,_ phase:Double,_ color:NSColor=orange) {
+    c.saveGState(); c.translateBy(x:x,y:H-y);c.rotate(by:CGFloat(sin(phase)*0.4));c.setFillColor(color.cgColor)
+    c.addPath(CGPath(roundedRect:CGRect(x:-size*0.5,y:-size*0.28,width:size,height:size*0.56),cornerWidth:8,cornerHeight:8,transform:nil));c.fillPath()
+    for d:CGFloat in [-1,1] { c.move(to:CGPoint(x:d*size*0.48,y:0));c.addLine(to:CGPoint(x:d*size*0.9,y:size*0.32));c.addLine(to:CGPoint(x:d*size*0.9,y:-size*0.32));c.closePath();c.fillPath() }
+    c.restoreGState()
+}
+func bat(_ c:CGContext,_ x:CGFloat,_ y:CGFloat,_ s:CGFloat,_ t:Double) {
+    c.saveGState();c.translateBy(x:x,y:H-y);let flap=CGFloat(sin(t*4))*s*0.13;c.setFillColor(cg(ink,0.7))
+    let p=CGMutablePath();p.move(to:CGPoint(x:0,y:-s*0.2));p.addLine(to:CGPoint(x:-s*0.52,y:flap));p.addLine(to:CGPoint(x:-s,y:s*0.45+flap));p.addLine(to:CGPoint(x:-s*0.7,y:-s*0.35));p.addLine(to:CGPoint(x:-s*0.2,y:-s*0.32));p.addLine(to:CGPoint(x:0,y:-s*0.6));p.addLine(to:CGPoint(x:s*0.2,y:-s*0.32));p.addLine(to:CGPoint(x:s*0.7,y:-s*0.35));p.addLine(to:CGPoint(x:s,y:s*0.45+flap));p.addLine(to:CGPoint(x:s*0.52,y:flap));p.closeSubpath();c.addPath(p);c.fillPath();c.restoreGState()
+}
+func trim(_ image:CGImage)->CGImage {
     let w=image.width,h=image.height;var bytes=[UInt8](repeating:0,count:w*h*4)
     let ctx=CGContext(data:&bytes,width:w,height:h,bitsPerComponent:8,bytesPerRow:w*4,space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue)!
-    ctx.draw(image,in:CGRect(x:0,y:0,width:w,height:h))
-    var l=w,r=0,t=h,b=0
-    for y in 0..<h { for x in 0..<w where bytes[(y*w+x)*4+3]>20 { l=min(l,x);r=max(r,x);t=min(t,y);b=max(b,y) } }
-    return image.cropping(to:CGRect(x:max(0,l-8),y:max(0,t-8),width:min(w-l,r-l+17),height:min(h-t,b-t+17))) ?? image
+    ctx.draw(image,in:CGRect(x:0,y:0,width:w,height:h));var l=w,rr=0,top=h,b=0
+    for y in 0..<h { for x in 0..<w where bytes[(y*w+x)*4+3]>25 { l=min(l,x);rr=max(rr,x);top=min(top,y);b=max(b,y) } }
+    return image.cropping(to:CGRect(x:max(0,l-6),y:max(0,top-6),width:min(w-l,rr-l+13),height:min(h-top,b-top+13))) ?? image
 }
-let character=trimCharacter(load(args[2]))
-func characterAt(_ c:CGContext,_ box:CGRect,_ t:Double,_ scale:CGFloat=1) {
-    let bob=CGFloat(sin(t*1.8))*12,tilt=CGFloat(sin(t*1.1))*0.025
-    let s=min(box.width/CGFloat(character.width),box.height/CGFloat(character.height))*scale
-    c.saveGState();c.translateBy(x:box.midX,y:box.midY+bob);c.rotate(by:tilt)
-    c.setShadow(offset:CGSize(width:0,height:-10),blur:24,color:color(purple,0.13))
-    c.draw(character,in:CGRect(x:-CGFloat(character.width)*s/2,y:-CGFloat(character.height)*s/2,width:CGFloat(character.width)*s,height:CGFloat(character.height)*s));c.restoreGState()
+let character=trim(CGImageSourceCreateImageAtIndex(CGImageSourceCreateWithURL(URL(fileURLWithPath:args[2]) as CFURL,nil)!,0,nil)!)
+func caspy(_ c:CGContext,_ x:CGFloat,_ y:CGFloat,_ width:CGFloat,_ height:CGFloat,_ t:Double) {
+    let scale=min(width/CGFloat(character.width),height/CGFloat(character.height));let bob=CGFloat(sin(t*1.65))*13
+    c.saveGState();c.translateBy(x:x+width/2,y:H-y-height/2+bob);c.rotate(by:CGFloat(sin(t*0.85))*0.035);c.setShadow(offset:CGSize(width:0,height:-12),blur:35,color:cg(ink,0.25));c.draw(character,in:CGRect(x:-CGFloat(character.width)*scale/2,y:-CGFloat(character.height)*scale/2,width:CGFloat(character.width)*scale,height:CGFloat(character.height)*scale));c.restoreGState()
 }
-func candy(_ c:CGContext,_ x:CGFloat,_ y:CGFloat,_ s:CGFloat,_ angle:CGFloat,_ shade:NSColor=orange,_ alpha:Double=1) {
-    c.saveGState();c.translateBy(x:x,y:H-y);c.rotate(by:angle);c.setFillColor(color(shade,alpha))
-    c.addPath(CGPath(roundedRect:CGRect(x:-s*0.45,y:-s*0.25,width:s*0.9,height:s*0.5),cornerWidth:s*0.12,cornerHeight:s*0.12,transform:nil));c.fillPath()
-    for direction:CGFloat in [-1,1] { c.move(to:CGPoint(x:direction*s*0.42,y:0));c.addLine(to:CGPoint(x:direction*s*0.85,y:s*0.30));c.addLine(to:CGPoint(x:direction*s*0.85,y:-s*0.30));c.closePath();c.fillPath() }
-    c.setStrokeColor(color(.white,0.8*alpha));c.setLineWidth(max(1,s*0.07));c.move(to:CGPoint(x:-s*0.16,y:-s*0.22));c.addLine(to:CGPoint(x:s*0.1,y:s*0.22));c.strokePath();c.restoreGState()
-}
-func star(_ c:CGContext,_ x:CGFloat,_ y:CGFloat,_ radius:CGFloat,_ t:Double,_ alpha:Double=1) {
-    let s=radius*CGFloat(0.7+0.3*sin(t));c.setFillColor(color(purple,alpha));let path=CGMutablePath()
-    path.move(to:CGPoint(x:x,y:H-y+s));path.addQuadCurve(to:CGPoint(x:x+s,y:H-y),control:CGPoint(x:x+s*0.15,y:H-y+s*0.15));path.addQuadCurve(to:CGPoint(x:x,y:H-y-s),control:CGPoint(x:x+s*0.15,y:H-y-s*0.15));path.addQuadCurve(to:CGPoint(x:x-s,y:H-y),control:CGPoint(x:x-s*0.15,y:H-y-s*0.15));path.addQuadCurve(to:CGPoint(x:x,y:H-y+s),control:CGPoint(x:x-s*0.15,y:H-y+s*0.15));c.addPath(path);c.fillPath()
-}
-func pill(_ c:CGContext,_ title:String,_ x:CGFloat,_ y:CGFloat,_ w:CGFloat,_ fill:NSColor=lavender,_ shade:NSColor=purple) {
-    round(c,rect(x,y,w,40),20,fill);text(c,title,x+15,y+10,14,w-30,25,shade,.semibold)
-}
-func button(_ c:CGContext,_ title:String,_ x:CGFloat,_ y:CGFloat,_ w:CGFloat,_ pulse:Double=0) {
-    round(c,rect(x,y+4,w,58),13,NSColor(red:0.76,green:0.35,blue:0.18,alpha:1))
-    round(c,rect(x,y-CGFloat(pulse)*2,w,58),13,orange)
-    text(c,title,x+22,y+17-CGFloat(pulse)*2,20,w-44,30,ink,.semibold)
-}
-func ghost(_ c:CGContext,_ x:CGFloat,_ y:CGFloat,_ size:CGFloat,_ t:Double) {
-    let r=rect(x,y+CGFloat(sin(t*2))*6,size,size)
-    c.saveGState();c.translateBy(x:r.minX,y:r.minY);c.setFillColor(NSColor.white.cgColor);c.setStrokeColor(purple.cgColor);c.setLineWidth(4)
-    let p=CGMutablePath();p.move(to:CGPoint(x:size*0.15,y:0));p.addLine(to:CGPoint(x:size*0.15,y:size*0.55));p.addCurve(to:CGPoint(x:size*0.85,y:size*0.55),control1:CGPoint(x:size*0.15,y:size*1.15),control2:CGPoint(x:size*0.85,y:size*1.15));p.addLine(to:CGPoint(x:size*0.85,y:0))
-    for i in stride(from:8,through:2,by:-1) { p.addLine(to:CGPoint(x:size*CGFloat(i)/10,y:i%2==0 ? 0:size*0.12)) };p.closeSubpath();c.addPath(p);c.drawPath(using:.fillStroke)
-    c.setFillColor(ink.cgColor);for v:CGFloat in [0.37,0.63] { c.fillEllipse(in:CGRect(x:size*(v-0.04),y:size*0.5,width:size*0.08,height:size*0.12)) };c.fillEllipse(in:CGRect(x:size*0.46,y:size*0.32,width:size*0.08,height:size*0.09));c.restoreGState()
-}
-// Damped overshoot: each entrance settles quickly, leaving time to read.
-func spring(_ t:Double)->CGFloat { t <= 0 ? 0:CGFloat(1-exp(-7*t)*cos(11*t)) }
-func pop(_ c:CGContext,_ box:CGRect,_ t:Double,_ delay:Double=0,_ draw:()->Void) {
-    guard t>delay else { return }
-    let elapsed=t-delay,p=spring(elapsed/0.85),scale=0.78+0.22*p
-    c.saveGState();c.setAlpha(CGFloat(ease(elapsed/0.25)))
-    c.translateBy(x:box.midX,y:box.midY-45*(1-p));c.scaleBy(x:scale,y:scale)
-    c.translateBy(x:-box.midX,y:-box.midY);draw();c.restoreGState()
-}
-func heading(_ c:CGContext,_ value:String,_ t:Double) {
-    pop(c,rect(60,108,1320,95),t) { text(c,value,60,108,53,1320,95,ink,.bold,1,.center) }
-}
-func drawScene(_ c:CGContext,_ index:Int,_ t:Double) {
-    switch index {
-    case 0,6:
-        let outro=index==6
-        c.setFillColor(color(lavender,0.8));c.fillEllipse(in:rect(830,130,510,480))
-        c.setStrokeColor(color(purple,0.18));c.setLineWidth(2);c.strokeEllipse(in:rect(790,100,580,535))
-        for i in 0..<10 { let a=Double(i)*0.9+t*0.17;star(c,1090+CGFloat(cos(a))*285,370+CGFloat(sin(a))*260,CGFloat(7+i%3*3),t+Double(i),0.4) }
-        pop(c,rect(865,110,440,530),t,0.15) { characterAt(c,rect(865,110,440,530),t,1+CGFloat(sin(t*3))*0.015) }
-        pop(c,rect(70,132,320,40),t,0.1) { pill(c,outro ? "YOUR TURN, LITTLE HEISTER":"MEET YOUR CANDY GUARDIAN",70,132,320) }
-        pop(c,rect(70,208,770,190),t,0.3) { text(c,outro ? "Big charm.\nTiny ghost.":"Cute face.\nTough negotiator.",70,208,66,780,190,ink,.bold) }
-        pop(c,rect(74,420,690,100),t,0.65) { text(c,outro ? "Bring your best story.\nCaspy is waiting.":"One precious basket. Three prompts.\nCan you charm Caspy into sharing?",74,420,28,690,100,muted,.medium) }
-        if outro {
-            pop(c,rect(74,550,340,58),t,1.1) { button(c,"Start a demo heist  →",74,550,340,0.5+0.5*sin(t*3));text(c,"A scripted preview. No real mint.",77,630,18,650,35,muted) }
-        } else {
-            for (i,label) in ["3 prompts","1 little ghost","Trick or Treat"].enumerated() {
-                let x=CGFloat(74+i*220)
-                pop(c,rect(x,560,205,40),t,1+Double(i)*0.23) { pill(c,label,x,560,205) }
-            }
+func headline(_ c:CGContext,_ value:String,_ t:Double,_ x:CGFloat=75,_ y:CGFloat=200,_ size:CGFloat=76,_ width:CGFloat=1050) {
+    for (i,line) in value.components(separatedBy:"\n").enumerated() {
+        let delay=0.28+Double(i)*0.22, dy=y+CGFloat(i)*(size+13)
+        pop(c,r(x,dy,width,size+20),t,delay) {
+            c.saveGState(); c.clip(to:r(x,dy,width*CGFloat(ease((t-delay)/0.65)),size+25))
+            txt(c,line,x,dy,size,width,size+25,i==1 ? orange:cream,.heavy)
+            c.restoreGState()
         }
-        candy(c,1304,151+CGFloat(sin(t*2))*15,34,CGFloat(t*0.3));candy(c,849,576+CGFloat(cos(t))*8,27,CGFloat(-t*0.4),purple)
-    case 1:
-        heading(c,"Your little heist starts here.",t)
-        pop(c,rect(90,237,755,396),t,0.2) {
-            round(c,rect(90,245,755,388),28,lavender);round(c,rect(90,237,755,388),28,.white)
-            pill(c,"THE HEIST  /  DEMO",125,266,255)
-            characterAt(c,rect(128,333,200,235),t)
-            text(c,"One sweet mission.",373,350,32,430,60,ink,.bold)
-            text(c,"Win over the guardian\nof the candy basket.",375,414,26,415,100,muted)
-            button(c,"Start a demo heist  →",372,540,390,0.5+0.5*sin(t*3))
-        }
-        let steps=["01  Open The heist","02  Start a demo heist","03  Bring your best words"]
-        for (i,label) in steps.enumerated() {
-            let y=CGFloat(265+i*112)
-            pop(c,rect(910,y,445,82),t,0.6+Double(i)*0.45) { round(c,rect(910,y,445,82),20,i==1 ? orange:lavender);text(c,label,934,y+26,23,400,42,ink,.semibold) }
-        }
-        pop(c,rect(965,620,330,40),t,2) { pill(c,"No wallet. Just imagination.",965,620,330) }
-    case 2:
-        heading(c,"Your words are the magic.",t)
-        pop(c,rect(60,220,330,395),t,0.1) { characterAt(c,rect(60,220,330,395),t) }
-        pop(c,rect(435,230,925,420),t,0.25) { round(c,rect(435,230,925,420),26,.white);outline(c,rect(435,230,925,420),26,lavender) }
-        text(c,"DEMO CHAT",469,254,16,350,30,purple,.bold)
-        let prompt="I’ll carry your basket through the haunted woods. Even brave ghosts deserve a little help."
-        pop(c,rect(575,308,744,125),t,0.65) {
-            round(c,rect(575,308,744,125),20,NSColor(red:1,green:0.93,blue:0.88,alpha:1))
-            text(c,String(prompt.prefix(Int(ease((t-0.65)/2.2)*Double(prompt.count)))),601,331,25,691,92,ink,.medium)
-        }
-        pop(c,rect(1035,470,283,58),t,2.3) { button(c,t>3 ? "Prompt sent  ✓":"Send prompt  ↗",1035,470,283,t>2.5 && t<3 ? sin((t-2.5)*6):0) }
-        pop(c,rect(470,470,530,128),t,3.3) {
-            round(c,rect(470,470,530,128),20,lavender)
-            text(c,"A sweet idea…\nKeep the story going!",495,494,26,480,90,purple,.semibold)
-        }
-        for (i,label) in ["Tell a story","Offer a trade","Try a little humor"].enumerated() {
-            pop(c,rect(56,CGFloat(210+i*68),330,40),t,0.8+Double(i)*0.3) { if t<3 { pill(c,label,56,CGFloat(210+i*68),330) } }
-        }
-    case 3:
-        heading(c,"Three chances. Make them count.",t)
-        let titles=["A clever trade","A little heart","One last story"]
-        let examples=["Offer to carry\nCaspy’s candy basket.","Make room for\na shy little ghost.","Give your story\na sweet ending."]
-        for i in 0..<3 {
-            let x=CGFloat(80+i*435),used=t>Double(i)*1.6+2.2
-            pop(c,rect(x,240,410,315),t,0.3+Double(i)*0.3) {
-                let hop=used ? -CGFloat(abs(sin(min(1,t-(Double(i)*1.6+2.2))*Double.pi)))*18:0
-                let y:CGFloat=240+hop
-                round(c,rect(x,y,410,315),24,.white);outline(c,rect(x,y,410,315),24,used ? purple:lavender,used ? 3:2)
-                candy(c,x+205,y+60,54,CGFloat(sin(t*2+Double(i)))*0.14,used ? purple:orange)
-                text(c,titles[i],x+25,y+117,29,360,55,ink,.bold,1,.center)
-                text(c,examples[i],x+25,y+181,23,360,90,muted,.regular,1,.center)
-                if used { pill(c,"PROMPT SENT  ✓",x+112,y+292,190) }
-            }
-        }
-        pop(c,rect(245,622,950,40),t,1.5) { pill(c,"Choose Treat or Trick in Preview outcome before your first prompt.",245,622,950) }
-    case 4:
-        heading(c,"Trick or Treat? A keepsake either way.",t)
-        for i in 0..<2 {
-            let x:CGFloat=i==0 ? 255:790
-            pop(c,rect(x,230,395,415),t,0.2+Double(i)*0.4) {
-                round(c,rect(x,237,395,408),27,lavender);round(c,rect(x,230,395,408),27,i==0 ? NSColor(red:1,green:0.91,blue:0.81,alpha:1):lavender)
-                if i==0 { characterAt(c,rect(x+89,245,218,240),t) }
-                else { ghost(c,x+95,267,205,t) }
-                text(c,i==0 ? "THE TREAT":"THE TRICK",x+25,512,31,345,48,ink,.bold,1,.center)
-                text(c,i==0 ? "A sweet little victory.":"A brave little heist.",x+20,568,22,355,45,muted,.medium,1,.center)
-            }
-        }
-        for i in 0..<20 {
-            let phase=(t*0.14+Double(i)*0.137).truncatingRemainder(dividingBy:1)
-            candy(c,100+CGFloat(i*67),210+CGFloat(phase)*430,CGFloat(8+i%3*3),CGFloat(t*0.7+Double(i)),i%2==0 ? orange:purple,0.5)
-        }
-    case 5:
-        heading(c,"Your keepsake moment.",t)
-        pop(c,rect(90,235,700,415),t,0.2) {
-            round(c,rect(90,242,700,408),28,lavender);round(c,rect(90,235,700,408),28,.white)
-            pill(c,"SIMULATED CLAIM",122,265,260)
-            characterAt(c,rect(126,343,224,225),t)
-            text(c,"A tiny trophy.\nA sweet memory.",385,348,32,370,115,ink,.bold)
-            button(c,t>4.3 ? "Claim simulated  ✓":"Simulate claim",385,516,345,t<4 ? 0.5+0.5*sin(t*3):0)
-            text(c,"Preview only · No real NFT",126,600,22,620,36,muted,.medium,1,.center)
-        }
-        for (i,label) in ["Open your result","Choose Claim","Simulate claim"].enumerated() {
-            let y=CGFloat(263+i*112),complete=t>1.2+Double(i)*1.4
-            pop(c,rect(860,y,490,82),t,0.5+Double(i)*0.45) {
-                round(c,rect(860,y,490,82),20,complete ? lavender:.white)
-                text(c,complete ? "✓":"0\(i+1)",885,y+21,29,60,50,purple,.bold)
-                text(c,label,957,y+27,25,370,42,ink,.semibold)
-            }
-        }
-        pop(c,rect(918,622,370,40),t,4.5) { pill(c,"Done! No real transaction.",918,622,370) }
-    default: break
+        if i==1 && t>1.05 { let progress=CGFloat(ease((t-1.05)/0.8));box(c,r(x,dy+size+8,min(width*0.8,650)*progress,5),orange,2,0.55) }
     }
 }
-func renderFrame(_ time:Double)->CVPixelBuffer {
+func field(_ c:CGContext,_ label:String,_ value:String,_ x:CGFloat,_ y:CGFloat,_ width:CGFloat,_ t:Double,_ delay:Double) {
+    pop(c,r(x,y,width,85),t,delay) { txt(c,label,x,y,19,width,28,muted,.medium);box(c,r(x,y+33,width,51),dark,10);stroke(c,r(x,y+33,width,51),lilac,1,10,0.3);txt(c,value,x+17,y+47,21,width-34,31,cream,.medium) }
+}
+func check(_ c:CGContext,_ title:String,_ y:CGFloat,_ t:Double,_ delay:Double,_ enabled:Bool=false) {
+    pop(c,r(830,y,655,72),t,delay) { box(c,r(850,y+10,30,30),enabled ? green:dark,8);stroke(c,r(850,y+10,30,30),lilac,2,8,0.8);if enabled { txt(c,"✓",854,y+10,24,30,35,ink,.bold) };txt(c,title,900,y+9,23,550,70,cream,.medium) }
+}
+func bodyCard(_ c:CGContext,_ scene:Scene,_ t:Double,_ index:Int) {
+    // Keep the reading surface steady after the staged entrance.
+    let y:CGFloat=630
+    pop(c,r(75,y,1450,158),t,1.0) {
+        box(c,r(75,y,1450,158),cream,22)
+        pill(c,String(format:"%02d",index+1),97,y+20,64,orange,ink)
+        txt(c,scene.body,185,y+22,28,1305,88,ink,.medium)
+        txt(c,scene.tip,185,y+111,19,1300,43,purple,.medium)
+    }
+}
+func scene(_ c:CGContext,_ index:Int,_ t:Double) {
+    let s=scenes[index]
+    txt(c,s.kicker,78,131,17,1440,35,lilac,.semibold,.left,1,2.1)
+    switch s.id {
+    case "welcome","ready":
+        headline(c,s.headline,t,75,214,79,1030)
+        c.setFillColor(cg(purple,0.45));c.fillEllipse(in:r(1080,180,390,390));stroke(c,r(1030,135,480,480),lilac,1,235,0.22)
+        pop(c,r(1050,160,450,450),t,0.2) { caspy(c,1075,160,415,440,t) }
+        if s.id=="welcome" {
+            for (i,title) in ["3 PROMPTS","1 GUARDIAN","YOUR CHOICE"].enumerated() { pop(c,r(CGFloat(78+i*252),465,232,43),t,1.2+Double(i)*0.15) { pill(c,title,CGFloat(78+i*252),465,232,dark,lilac) } }
+        } else { pop(c,r(80,469,600,62),t,0.9) { box(c,r(80,469,590,62),orange,14);txt(c,"REGISTER  →  PLAY  →  EXPLORE",104,489,22,550,35,ink,.bold) } }
+    case "account":
+        headline(c,s.headline,t,75,208,76,740);caspy(c,390,396,190,200,t)
+        pop(c,r(820,192,690,408),t,0.15) { box(c,r(820,192,690,408),dark,25);stroke(c,r(820,192,690,408),lilac,1,25,0.3);txt(c,"JOIN THE HAUNT",850,215,23,600,40,cream,.bold) }
+        field(c,"YOUR NAME","Little heister",855,276,615,t,0.6)
+        field(c,"EMAIL","you@example.com",855,375,615,t,0.85)
+        pop(c,r(855,478,615,84),t,1.15) { txt(c,"PASSWORD",855,478,19,400,28,muted,.medium);box(c,r(855,511,615,51),purple,10);txt(c,"12+ characters · confirm it",874,525,22,570,32,cream,.semibold) }
+    case "consent":
+        headline(c,s.headline,t,75,218,80,740)
+        pop(c,r(815,209,700,380),t,0.2) { box(c,r(815,209,700,380),dark,25);stroke(c,r(815,209,700,380),lilac,1,25,0.3);pill(c,"PRIVATE BY DEFAULT",850,236,450,purple,cream) }
+        check(c,"Choose a named research campaign",312,t,0.8)
+        check(c,"Opt in to research contribution",395,t,1.2)
+        check(c,"Commercial permission is separate",478,t,1.6)
+        pop(c,r(78,469,650,65),t,2.1) { pill(c,"SAY NO. STILL PLAY. STILL EARN.",78,469,620,orange,ink) }
+    case "prompt":
+        headline(c,s.headline,t,75,197,72,1350)
+        let prompt="I’ll bake moonbeam cookies for every lonely ghost. Could one candy decorate our first batch?"
+        pop(c,r(78,397,1435,182),t,0.75) { box(c,r(78,397,1435,182),lavender,24);txt(c,"YOUR PITCH",108,417,17,1100,30,purple,.bold,.left,1,1.5);let count=Int(clamp((t-1.0)/2.8)*Double(prompt.count));txt(c,String(prompt.prefix(count)),108,461,32,1310,105,ink,.semibold);txt(c,"500 CHARACTERS MAX  ·  ENTER TO SEND",108,550,14,1100,25,purple,.semibold) }
+        if t>4 { for i in 0..<9 { let p=t-4+Double(i)*0.2;star(c,CGFloat(200+i*150),370+CGFloat(sin(p))*15,8,p,0.55) } }
+    case "attempts":
+        headline(c,s.headline,t,75,194,72,1400)
+        for i in 0..<3 {
+            let x=CGFloat(82+i*485), used=t>Double(i)*2.2+2.0
+            pop(c,r(x,405,455,174),t,0.8+Double(i)*0.2) { box(c,r(x,405,455,174),used ? purple:dark,22);stroke(c,r(x,405,455,174),used ? lilac:purple,2,22,0.6);candy(c,x+65,468,39,t+Double(i),used ? lilac:orange);txt(c,["A thoughtful trade","A different angle","One last story"][i],x+120,438,25,315,75,cream,.bold);txt(c,used ? "PROMPT SENT  ✓":"CHANCE \(i+1)",x+120,526,17,305,28,used ? lavender:muted,.semibold) }
+        }
+    case "judge":
+        headline(c,s.headline,t,75,192,70,1400)
+        let cards=[("CASPY", "A character response", orange), ("INDEPENDENT JUDGE", "Structured evaluation", lilac), ("SERVER", "Confirms the outcome", green)]
+        for (i,item) in cards.enumerated() {
+            let x=CGFloat(80+i*486)
+            pop(c,r(x,401,452,177),t,0.8+Double(i)*0.3) { box(c,r(x,401,452,177),dark,22);box(c,r(x+25,429,7,110),item.2,3);txt(c,item.0,x+50,438,22,370,40,item.2,.bold);txt(c,item.1,x+50,497,24,365,65,cream,.medium) }
+            if i<2 {
+                let a=CGFloat(ease((t-1.4-Double(i)*0.3)/0.7));box(c,r(x+455,485,31*a,3),orange,1)
+                if t>2 { let phase=CGFloat((t*0.65-Double(i)*0.25).truncatingRemainder(dividingBy:1));box(c,r(x+453+phase*28,481,9,9),orange,4) }
+            }
+        }
+    case "result":
+        headline(c,s.headline,t,75,197,73,1400)
+        for i in 0..<2 {
+            let x=CGFloat(80+i*743), float=CGFloat(sin(t*1.6+Double(i)))*6
+            pop(c,r(x,402,710,183),t,0.8+Double(i)*0.3) { box(c,r(x,402+float,710,183),i==0 ? orange:lavender,23);txt(c,i==0 ? "EARN CANDY":"NO CANDY",x+30,426+float,46,600,75,ink,.heavy);txt(c,i==0 ? "C / B / A / S — scored, never drawn.":"No win. No image. No NFT.",x+33,520+float,24,640,45,ink,.medium);if i==0 { candy(c,x+620,466+float,40,t,ink) } }
+        }
+    case "mint":
+        headline(c,s.headline,t,75,201,76,800);caspy(c,1095,192,355,390,t)
+        let items=["WIN → AUTHORIZE FLUX ARTWORK","MINT YOUR EARNED CANDY","COLLECTION → LICENSE & LIST"]
+        for (i,title) in items.enumerated() { pop(c,r(78,CGFloat(430+i*50),980,39),t,0.9+Double(i)*0.35) { txt(c,"0\(i+1)  \(title)",78,CGFloat(430+i*50),21,980,37,i==2 && t>4 ? green:cream,.semibold) } }
+    case "research":
+        headline(c,s.headline,t,75,198,74,1400)
+        for (i,title) in ["PUBLISH A CAMPAIGN","REVIEW & LABEL","INSPECT & LICENSE"].enumerated() {
+            let x=CGFloat(80+i*486)
+            pop(c,r(x,409,452,175),t,0.8+Double(i)*0.3) { box(c,r(x,409,452,175),dark,22);txt(c,"0\(i+1)",x+24,428,42,110,65,orange,.heavy);txt(c,title,x+25,518,22,405,45,cream,.bold) }
+        }
+    default: break
+    }
+    bodyCard(c,s,t,index)
+}
+func frame(_ time:Double)->CVPixelBuffer {
     var optional:CVPixelBuffer?
     CVPixelBufferCreate(kCFAllocatorDefault,Int(W),Int(H),kCVPixelFormatType_32ARGB,[kCVPixelBufferCGImageCompatibilityKey:true,kCVPixelBufferCGBitmapContextCompatibilityKey:true] as CFDictionary,&optional)
     let buffer=optional!;CVPixelBufferLockBaseAddress(buffer,[]);defer { CVPixelBufferUnlockBaseAddress(buffer,[]) }
     let c=CGContext(data:CVPixelBufferGetBaseAddress(buffer),width:Int(W),height:Int(H),bitsPerComponent:8,bytesPerRow:CVPixelBufferGetBytesPerRow(buffer),space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.noneSkipFirst.rawValue)!
-    c.setFillColor(paper.cgColor);c.fill(CGRect(x:0,y:0,width:W,height:H))
-    c.setFillColor(color(lavender,0.32));c.fillEllipse(in:rect(1040,-125,520,500));c.fillEllipse(in:rect(-200,400,450,450))
-    for i in 0..<12 { star(c,CGFloat(50+i*121),100+CGFloat((i*83)%530)+CGFloat(sin(time*0.6+Double(i)))*13,4,time+Double(i),0.13) }
-    let index=min(6,Int(time/8)),local=time-Double(index)*8
-    if index>0 && local<0.5 { c.saveGState();c.setAlpha(CGFloat(1-smooth(local/0.5)));drawScene(c,index-1,7.99);c.restoreGState() }
-    c.saveGState();c.setAlpha(CGFloat(index==0 ? 1:smooth(local/0.5)));drawScene(c,index,local);c.restoreGState()
-    text(c,"caspy",47,23,31,190,50,ink,.bold);text(c,".",138,21,35,40,50,orange,.bold)
-    text(c,"A LITTLE CHARM. A LITTLE MISCHIEF.",228,38,12,700,28,muted,.semibold)
-    pill(c,"DEMO EXPLAINER  ·  \(index+1)/7",1100,25,290,lavender,purple)
-    c.setFillColor(color(.white,0.96));c.fill(rect(0,704,W,106))
-    c.setFillColor(lavender.cgColor);c.fill(rect(0,704,W,1))
-    text(c,scenes[index].caption,50,730,26,1340,65,ink,.semibold,1,.center)
-    c.setFillColor(lavender.cgColor);c.fill(rect(0,805,W,5));c.setFillColor(orange.cgColor);c.fill(rect(0,805,W*CGFloat(time/duration),5))
+    c.setFillColor(ink.cgColor);c.fill(CGRect(x:0,y:0,width:W,height:H))
+    let gradient=CGGradient(colorsSpace:CGColorSpaceCreateDeviceRGB(),colors:[cg(dark),cg(ink)] as CFArray,locations:[0,1])!
+    c.drawLinearGradient(gradient,start:CGPoint(x:0,y:H),end:CGPoint(x:W,y:0),options:[])
+    // Slow parallax, a breathing moon, drifting stars, and bat silhouettes.
+    c.setFillColor(cg(purple,0.09));c.fillEllipse(in:r(1100+CGFloat(sin(time*0.12))*45,-240,700,700))
+    c.setStrokeColor(cg(lilac,0.045));c.setLineWidth(1)
+    for i in 0..<18 { let x=CGFloat(i)*100+CGFloat(time.truncatingRemainder(dividingBy:8))*4;c.move(to:CGPoint(x:x,y:0));c.addLine(to:CGPoint(x:x,y:H)) };c.strokePath()
+    for i in 0..<22 { star(c,CGFloat(30+i*73),90+CGFloat((i*67)%500)+CGFloat(sin(time*0.5+Double(i)))*13,CGFloat(3+i%3),time+Double(i),0.18) }
+    bat(c,1450+CGFloat(sin(time*0.22))*35,148,23,time);bat(c,1320+CGFloat(sin(time*0.17))*50,114,14,time+2)
+    let index=starts.indices.last(where:{time>=starts[$0]}) ?? 0, local=time-starts[index]
+    if index>0 && local<0.42 { c.saveGState();c.setAlpha(CGFloat(1-smooth(local/0.42)));c.translateBy(x:-CGFloat(ease(local/0.42))*55,y:0);scene(c,index-1,Double(scenes[index-1].seconds)-0.01);c.restoreGState() }
+    c.saveGState();c.setAlpha(CGFloat(index==0 ? 1:smooth(local/0.42)));c.translateBy(x:CGFloat(1-ease(local/0.55))*65,y:0);scene(c,index,local);c.restoreGState()
+    txt(c,"caspy.",73,31,38,230,58,cream,.heavy)
+    txt(c,"THE INTERACTIVE FIELD GUIDE",290,48,14,800,28,muted,.semibold,.left,1,2)
+    pill(c,String(format:"%02d / %02d",index+1,scenes.count),1353,34,173,dark,lilac)
+    txt(c,String(format:"%02d",index+1),1250,690,128,270,160,lilac,.heavy,.right,0.045)
+    for i in scenes.indices {
+        let x=CGFloat(78+i*146),progress=i<index ? 1:i==index ? clamp(local/Double(scenes[i].seconds)):0
+        box(c,r(x,831,132,5),lilac,2,0.20);box(c,r(x,831,132*CGFloat(progress),5),orange,2)
+    }
+    txt(c,scenes[index].label.uppercased(),78,856,13,1100,24,muted,.medium,.left,1,1.4)
+    txt(c,"MUSIC + WORDLESS GHOST CHOIR · NO NARRATION",910,856,12,615,24,muted,.medium,.right)
     return buffer
 }
-func saveJPEG(_ buffer:CVPixelBuffer,_ name:String) {
-    let image=CIImage(cvPixelBuffer:buffer),cg=CIContext().createCGImage(image,from:image.extent)!
+func jpeg(_ buffer:CVPixelBuffer,_ name:String) {
+    let image=CIImage(cvPixelBuffer:buffer),cgImage=CIContext().createCGImage(image,from:image.extent)!
     let destination=CGImageDestinationCreateWithURL(output.appendingPathComponent(name) as CFURL,"public.jpeg" as CFString,1,nil)!
-    CGImageDestinationAddImage(destination,cg,[kCGImageDestinationLossyCompressionQuality:0.9] as CFDictionary);CGImageDestinationFinalize(destination)
+    CGImageDestinationAddImage(destination,cgImage,[kCGImageDestinationLossyCompressionQuality:0.93] as CFDictionary);CGImageDestinationFinalize(destination)
 }
-for i in 0..<7 { saveJPEG(renderFrame(Double(i)*8+3),"preview-\(i).jpg") }
-saveJPEG(renderFrame(2.2),"caspy-walkthrough-poster.jpg")
-print("Rendered seven preview scenes.");fflush(stdout)
+for i in scenes.indices { jpeg(frame(starts[i]+min(4.5,Double(scenes[i].seconds)-1)),"preview-\(i).jpg") }
+jpeg(frame(3),"caspy-showcase-poster.jpg")
+print("Rendered \(scenes.count) scene previews.");fflush(stdout)
+func stamp(_ seconds:Double)->String { let ms=Int(seconds*1000);return String(format:"%02d:%02d:%02d.%03d",ms/3600000,(ms/60000)%60,(ms/1000)%60,ms%1000) }
+var captions="WEBVTT\n\n"
+for (i,s) in scenes.enumerated() {
+    captions += "\(i+1)\n\(stamp(starts[i])) --> \(stamp(starts[i]+Double(s.seconds)))\n\(i == 0 ? "[Halloween music and wordless ghost choir; no spoken narration]\n" : "")\(s.label). \(s.body)\n\(s.tip)\n\n"
+}
+try captions.write(to:output.appendingPathComponent("caspy-showcase.en.vtt"),atomically:true,encoding:.utf8)
 if !args.contains("--stills") {
-    let silent=output.appendingPathComponent("motion-silent.mp4")
-    let final=output.appendingPathComponent("caspy-walkthrough.mp4")
+    let silent=output.appendingPathComponent("motion-silent.mp4"), final=output.appendingPathComponent("caspy-showcase.mp4")
     for path in [silent,final] where FileManager.default.fileExists(atPath:path.path) { try FileManager.default.removeItem(at:path) }
     let writer=try AVAssetWriter(outputURL:silent,fileType:.mp4);writer.shouldOptimizeForNetworkUse=true
-    let input=AVAssetWriterInput(mediaType:.video,outputSettings:[AVVideoCodecKey:AVVideoCodecType.h264,AVVideoWidthKey:Int(W),AVVideoHeightKey:Int(H),AVVideoCompressionPropertiesKey:[AVVideoAverageBitRateKey:2_400_000,AVVideoExpectedSourceFrameRateKey:fps,AVVideoMaxKeyFrameIntervalKey:fps*2,AVVideoProfileLevelKey:AVVideoProfileLevelH264MainAutoLevel]])
+    let input=AVAssetWriterInput(mediaType:.video,outputSettings:[AVVideoCodecKey:AVVideoCodecType.h264,AVVideoWidthKey:Int(W),AVVideoHeightKey:Int(H),AVVideoCompressionPropertiesKey:[AVVideoAverageBitRateKey:2_800_000,AVVideoExpectedSourceFrameRateKey:fps,AVVideoMaxKeyFrameIntervalKey:fps*2,AVVideoProfileLevelKey:AVVideoProfileLevelH264HighAutoLevel]])
     input.expectsMediaDataInRealTime=false
     let adaptor=AVAssetWriterInputPixelBufferAdaptor(assetWriterInput:input,sourcePixelBufferAttributes:[kCVPixelBufferPixelFormatTypeKey as String:kCVPixelFormatType_32ARGB,kCVPixelBufferWidthKey as String:Int(W),kCVPixelBufferHeightKey as String:Int(H)])
-    writer.add(input);guard writer.startWriting() else { fatalError("Could not start native encoder; run with media access") };writer.startSession(atSourceTime:.zero)
-    let total=Int(duration*Double(fps))
-    for frame in 0..<total {
+    writer.add(input);guard writer.startWriting() else { fatalError("Could not start encoder: \(String(describing:writer.error))") };writer.startSession(atSourceTime:.zero)
+    for n in 0..<Int(duration*Double(fps)) {
         autoreleasepool {
-            while !input.isReadyForMoreMediaData { if writer.status == .failed { fatalError("Video encoding failed") };Thread.sleep(forTimeInterval:0.003) }
-            let buffer=renderFrame(Double(frame)/Double(fps))
-            guard adaptor.append(buffer,withPresentationTime:CMTime(value:Int64(frame),timescale:fps)) else { fatalError("Frame append failed") }
+            while !input.isReadyForMoreMediaData { if writer.status == .failed { fatalError("Encoder failed") };Thread.sleep(forTimeInterval:0.003) }
+            guard adaptor.append(frame(Double(n)/Double(fps)),withPresentationTime:CMTime(value:Int64(n),timescale:fps)) else { fatalError("Frame append failed") }
         }
-        if frame % (Int(fps)*8) == 0 { print("Encoded scene \(frame/(Int(fps)*8)+1)/7");fflush(stdout) }
+        if n % (Int(fps)*10)==0 { print("Rendered \(n/Int(fps)) / \(Int(duration)) seconds");fflush(stdout) }
     }
     input.markAsFinished();writer.endSession(atSourceTime:CMTime(seconds:duration,preferredTimescale:600))
-    let done=DispatchSemaphore(value:0);writer.finishWriting { done.signal() };done.wait();guard writer.status == .completed else { fatalError("Could not finish video") }
-    let composition=AVMutableComposition()
-    let source=AVURLAsset(url:silent)
-    let video=composition.addMutableTrack(withMediaType:.video,preferredTrackID:kCMPersistentTrackID_Invalid)!
-    try video.insertTimeRange(CMTimeRange(start:.zero,duration:CMTime(seconds:duration,preferredTimescale:600)),of:source.tracks(withMediaType:.video)[0],at:.zero)
-    let soundtrackURL=URL(fileURLWithPath:args[1]).deletingLastPathComponent().appendingPathComponent("soundtrack.m4a")
-    let soundtrack=AVURLAsset(url:soundtrackURL)
-    let audio=composition.addMutableTrack(withMediaType:.audio,preferredTrackID:kCMPersistentTrackID_Invalid)!
-    try audio.insertTimeRange(CMTimeRange(start:.zero,duration:CMTime(seconds:duration,preferredTimescale:600)),of:soundtrack.tracks(withMediaType:.audio)[0],at:.zero)
+    let done=DispatchSemaphore(value:0);writer.finishWriting { done.signal() };done.wait();guard writer.status == .completed else { fatalError("Video encoding failed") }
+    // Encode the original PCM score to AAC once, then copy H.264 + AAC into MP4.
+    let audioURL=output.appendingPathComponent("soundtrack.m4a")
+    if FileManager.default.fileExists(atPath:audioURL.path) { try FileManager.default.removeItem(at:audioURL) }
+    let audioSource=AVURLAsset(url:URL(fileURLWithPath:args[3]))
+    let audioExport=AVAssetExportSession(asset:audioSource,presetName:AVAssetExportPresetAppleM4A)!
+    audioExport.outputURL=audioURL;audioExport.outputFileType = .m4a
+    let audioDone=DispatchSemaphore(value:0);audioExport.exportAsynchronously { audioDone.signal() };audioDone.wait()
+    guard audioExport.status == .completed else { fatalError("AAC encoding failed") }
+    let composition=AVMutableComposition(), source=AVURLAsset(url:silent), sound=AVURLAsset(url:audioURL)
+    let range=CMTimeRange(start:.zero,duration:CMTime(seconds:duration,preferredTimescale:600))
+    try composition.addMutableTrack(withMediaType:.video,preferredTrackID:kCMPersistentTrackID_Invalid)!.insertTimeRange(range,of:source.tracks(withMediaType:.video)[0],at:.zero)
+    guard let soundTrack=sound.tracks(withMediaType:.audio).first, sound.duration.seconds>=duration-0.05 else { fatalError("Soundtrack missing or too short") }
+    try composition.addMutableTrack(withMediaType:.audio,preferredTrackID:kCMPersistentTrackID_Invalid)!.insertTimeRange(range,of:soundTrack,at:.zero)
     let export=AVAssetExportSession(asset:composition,presetName:AVAssetExportPresetPassthrough)!
     export.outputURL=final;export.outputFileType = .mp4;export.shouldOptimizeForNetworkUse=true
-    let muxed=DispatchSemaphore(value:0);export.exportAsynchronously { muxed.signal() };muxed.wait()
-    guard export.status == .completed else { fatalError("Audio/video mux failed: \(String(describing:export.error))") }
-    var captions="WEBVTT\n\n"
-    for (i,scene) in scenes.enumerated() {
-        captions += "\(i+1)\n00:\(String(format:"%02d",(i*8)/60)):\(String(format:"%02d",(i*8)%60)).000 --> 00:\(String(format:"%02d",((i+1)*8)/60)):\(String(format:"%02d",((i+1)*8)%60)).000\n\(scene.caption)\n\n"
-    }
-    try captions.write(to:output.appendingPathComponent("caspy-walkthrough.en.vtt"),atomically:true,encoding:.utf8)
-    let size=(try FileManager.default.attributesOfItem(atPath:final.path)[.size] as! NSNumber).intValue
-    print("Exported text-led 56-second motion video: \(size) bytes, 1440x810, 24 fps.")
+    let finished=DispatchSemaphore(value:0);export.exportAsynchronously { finished.signal() };finished.wait()
+    guard export.status == .completed else { fatalError("Mux failed: \(String(describing:export.error))") }
+    print("Exported \(Int(duration)) seconds, 1600x900, 30 fps, music only.")
 }

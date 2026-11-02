@@ -2,7 +2,7 @@
 import { createPublicClient, createWalletClient, http } from 'viem';
 import { foundry } from 'viem/chains';
 import { createSiweMessage } from 'viem/siwe';
-import { caspyAbi } from '../src/lib/contract.ts';
+import { caspyAbi, marketAbi } from '../src/lib/contract.ts';
 
 let raw = '';
 for await (const part of process.stdin) raw += part;
@@ -21,9 +21,14 @@ else if (input.action === 'sign-in') {
   console.log(JSON.stringify({ message, signature }));
 } else if (input.action === 'mint') {
   const v = input.voucher;
-  const args = [v.to, BigInt(v.tier), v.sessionId, BigInt(v.nonce), BigInt(v.deadline), v.signature];
-  const { request } = await client.simulateContract({ account, address: v.contract, abi: caspyAbi, functionName: 'mintWithVoucher', args });
+  const args = [{ ...v, nonce: BigInt(v.nonce), deadline: BigInt(v.deadline) }, v.uri, v.signature];
+  const { request } = await client.simulateContract({ account, address: v.contract, abi: caspyAbi, functionName: 'mintCandy', args });
   const hash = await wallet.writeContract(request);
   await client.waitForTransactionReceipt({ hash });
   console.log(JSON.stringify({ hash }));
+} else if (input.action === 'write') {
+  const abi = input.market ? marketAbi : caspyAbi;
+  const args = (input.args || []).map(value => typeof value === 'string' && /^\d+$/.test(value) ? BigInt(value) : value);
+  const { request } = await client.simulateContract({ account, address: input.contract, abi, functionName: input.function_name, args, ...(input.value ? { value: BigInt(input.value) } : {}) });
+  const hash = await wallet.writeContract(request); await client.waitForTransactionReceipt({ hash }); console.log(JSON.stringify({ hash }));
 } else throw new Error('Unknown test action.');

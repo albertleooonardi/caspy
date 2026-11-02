@@ -4,7 +4,7 @@ This file gives Kiro the project context it needs when working in this repo.
 
 ## Overview
 
-Caspy's Prompt Heist is a skill-based social-engineering game. Players chat with Caspy (a ghost) and get 3 prompts to persuade him. Success mints a rare **Treat** NFT; failure mints a common **Trick** NFT. The full product spec is in #[[file:PRD.md]].
+Caspy's Prompt Heist is a skill-based social-engineering game. Players chat with Caspy (a ghost) and get 3 prompts to persuade him. Confirmed wins earn a FLUX.1-dev prompt-generated candy NFT graded C/B/A/S; losses earn no NFT. See PRD section 21 for the current local implementation and fixed-price marketplace. The full product spec is in #[[file:PRD.md]].
 
 ## Golden rule
 

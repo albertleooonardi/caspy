@@ -1,26 +1,43 @@
 import { parseAbi } from 'viem';
-
-// Matches blockhain/src/CaspyHeist.sol. Also used by the server signing bridge.
 export const caspyAbi = parseAbi([
-  'function mintWithVoucher(address to, uint256 tier, bytes32 sessionId, uint256 nonce, uint256 deadline, bytes signature)',
+  'function VERSION() view returns (uint256)',
+  'function mintCandy((address to,uint8 grade,uint16 score,bytes32 sessionId,bytes32 promptHash,bytes32 imageHash,bytes32 metadataHash,bytes32 uriHash,uint256 nonce,uint256 deadline) v,string uri,bytes signature)',
   'function usedSessions(bytes32) view returns (bool)',
-  'function hasRole(bytes32 role, address account) view returns (bool)',
+  'function mintedWallet(address) view returns (bool)',
+  'function hasRole(bytes32,address) view returns (bool)',
   'function SIGNER_ROLE() view returns (bytes32)',
   'function name() view returns (string)',
-  'function treatSupply() view returns (uint256)',
-  'function treatMinted() view returns (uint256)',
+  'function maxSupply() view returns (uint256)',
+  'function totalMinted() view returns (uint256)',
   'function paused() view returns (bool)',
   'function ownerOf(uint256) view returns (address)',
-  'function tokenTier(uint256) view returns (uint256)',
+  'function creatorOf(uint256) view returns (address)',
+  'function tokenGrade(uint256) view returns (uint8)',
+  'function tokenScore(uint256) view returns (uint16)',
+  'function tokenPromptHash(uint256) view returns (bytes32)',
+  'function tokenImageHash(uint256) view returns (bytes32)',
+  'function tokenMetadataHash(uint256) view returns (bytes32)',
+  'function tokenSession(uint256) view returns (bytes32)',
   'function tokenURI(uint256) view returns (string)',
-  'event MintWithVoucher(address indexed to, uint256 indexed tokenId, uint256 indexed tier, bytes32 sessionId, uint256 nonce)',
+  'function approve(address,uint256)',
+  'function licensePrompt(uint256,string)',
+  'function promptLicense(uint256) view returns (string)',
+  'event CandyMinted(address indexed to,uint256 indexed tokenId,bytes32 indexed sessionId,uint8 grade,uint16 score,bytes32 promptHash,bytes32 imageHash,bytes32 metadataHash)',
 ]);
-
-export const voucherTypes = {
-  Voucher: [
-    { name: 'to', type: 'address' }, { name: 'tier', type: 'uint256' },
-    { name: 'sessionId', type: 'bytes32' }, { name: 'nonce', type: 'uint256' },
-    { name: 'deadline', type: 'uint256' }, { name: 'chainId', type: 'uint256' },
-    { name: 'verifyingContract', type: 'address' },
-  ],
-} as const;
+export const voucherTypes = { CandyVoucher: [
+  { name:'to',type:'address' },{ name:'grade',type:'uint8' },{ name:'score',type:'uint16' },
+  { name:'sessionId',type:'bytes32' },{ name:'promptHash',type:'bytes32' },{ name:'imageHash',type:'bytes32' },
+  { name:'metadataHash',type:'bytes32' },{ name:'uriHash',type:'bytes32' },{ name:'nonce',type:'uint256' },{ name:'deadline',type:'uint256' },
+] } as const;
+export const marketAbi = parseAbi([
+  'function candy() view returns (address)',
+  'function list(uint256 tokenId,uint256 price) returns (uint256)',
+  'function buy(uint256 listingId) payable',
+  'function cancel(uint256 listingId)',
+  'function withdraw()',
+  'function proceeds(address) view returns (uint256)',
+  'function nextListingId() view returns (uint256)',
+  'function listings(uint256) view returns (address seller,uint256 tokenId,uint256 price,bool active)',
+  'event CandyListed(uint256 indexed listingId,address indexed seller,uint256 indexed tokenId,uint256 price)',
+  'event CandySold(uint256 indexed listingId,address indexed seller,address indexed buyer,uint256 tokenId,uint256 price)',
+]);

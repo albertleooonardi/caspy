@@ -1,0 +1,112 @@
+[
+  {
+    "id": "welcome",
+    "seconds": 8,
+    "label": "Meet Caspy",
+    "kicker": "A LITTLE CHARM. A LITTLE MISCHIEF.",
+    "headline": "Three prompts.\nOne stubborn ghost.",
+    "body": "Persuade Caspy to share his candy. Your words are the only tools you need.",
+    "tip": "An illustrated guide to the local app. Examples are not guaranteed wins.",
+    "action": "Meet your ghost",
+    "href": "/play"
+  },
+  {
+    "id": "account",
+    "seconds": 10,
+    "label": "Join the haunt",
+    "kicker": "01 / YOUR ACCOUNT COMES FIRST",
+    "headline": "Step inside.\nMake it yours.",
+    "body": "Register with your name, email and a password of at least 12 characters. Already here? Sign in.",
+    "tip": "Choose Play & contribute, or Evaluate AI to create a research workspace.",
+    "action": "Create your account",
+    "href": "/register"
+  },
+  {
+    "id": "consent",
+    "seconds": 12,
+    "label": "Choose what to share",
+    "kicker": "02 / PRIVATE PLAY IS THE DEFAULT",
+    "headline": "Your words.\nYour choice.",
+    "body": "Choose a named campaign only if you want to contribute. Research and commercial licensing have separate permissions.",
+    "tip": "Both boxes start unchecked. Consent never changes your attempts, outcome or NFT eligibility.",
+    "action": "Review your choices",
+    "href": "/account"
+  },
+  {
+    "id": "prompt",
+    "seconds": 12,
+    "label": "Write your pitch",
+    "kicker": "03 / GET CREATIVE IN CASPY’S WORLD",
+    "headline": "A story. A trade.\nA little heart.",
+    "body": "Write up to 500 characters. Send with Enter or the arrow. Shift + Enter adds a new line.",
+    "tip": "Make a specific, playful pitch. Never include private or confidential information.",
+    "action": "Write your first prompt",
+    "href": "/play"
+  },
+  {
+    "id": "attempts",
+    "seconds": 10,
+    "label": "Make three count",
+    "kicker": "04 / THREE CHANCES TO MAKE A CONNECTION",
+    "headline": "Read. Rethink.\nTry a new angle.",
+    "body": "Wait for Caspy’s reply before your next prompt. The candy counter shows how many chances remain.",
+    "tip": "A heist can finish early if you win. Repeating a demand is not a magic shortcut.",
+    "action": "Meet the candy guardian",
+    "href": "/play"
+  },
+  {
+    "id": "judge",
+    "seconds": 10,
+    "label": "Trust the result",
+    "kicker": "05 / TWO AI ROLES. ONE SERVER-OWNED RESULT.",
+    "headline": "Caspy replies.\nThe judge evaluates.",
+    "body": "A separate judge checks the pitch and response. Caspy’s friendly words alone never authorize a win or mint.",
+    "tip": "If judging is unavailable, choose Check judge again. The saved reply is reviewed without another attempt.",
+    "action": "Read the game rules",
+    "href": "/rules"
+  },
+  {
+    "id": "result",
+    "seconds": 10,
+    "label": "Earn your candy",
+    "kicker": "06 / YOUR LITTLE HEIST HAS AN ENDING",
+    "headline": "Win Caspy over.\nEarn your grade.",
+    "body": "Only a confirmed win earns candy. Creativity, coherence, specificity and measured novelty determine grade C, B, A or S.",
+    "tip": "No win means no candy or NFT. Grades are recorded before image generation; no random rarity draws.",
+    "action": "Start your own heist",
+    "href": "/play"
+  },
+  {
+    "id": "mint",
+    "seconds": 10,
+    "label": "Generate, mint, collect",
+    "kicker": "07 / AN OPTIONAL LOCAL-CHAIN KEEPSAKE",
+    "headline": "Your words.\nA candy like no other.",
+    "body": "In NFT mode, authorize FLUX to create your winning candy. Mint it, then open Collection to list the NFT with source-prompt access.",
+    "tip": "Local test ETH only. Buyers unlock the redacted prompt after purchase. Research consent is separate.",
+    "action": "Open the heist",
+    "href": "/play"
+  },
+  {
+    "id": "research",
+    "seconds": 12,
+    "label": "Beyond the heist",
+    "kicker": "08 / FROM CURIOSITY TO REVIEWED EVIDENCE",
+    "headline": "Human creativity.\nBetter questions.",
+    "body": "Researchers publish campaigns, review redacted examples, add human labels and inspect scoped metrics. Licensed datasets need separate commercial consent.",
+    "tip": "Withdraw future research use in Account. Downloaded copies cannot be recalled. Redaction does not guarantee anonymity.",
+    "action": "Explore the research lab",
+    "href": "/research"
+  },
+  {
+    "id": "ready",
+    "seconds": 6,
+    "label": "Your turn",
+    "kicker": "THE DOOR IS OPEN. THE CANDY IS GUARDED.",
+    "headline": "Bring your words.\nMake a little mischief.",
+    "body": "Create an account. Choose your path. Give Caspy a reason to share.",
+    "tip": "No narration. Original Halloween music and wordless ghost choir only.",
+    "action": "Join the haunt",
+    "href": "/register"
+  }
+]

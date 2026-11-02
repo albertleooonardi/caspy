@@ -2,7 +2,7 @@ import { createPublicClient, createWalletClient, custom, getAddress, http, type 
 import { base, foundry } from 'viem/chains';
 import { createSiweMessage } from 'viem/siwe';
 import { request } from './game';
-import { caspyAbi } from './contract';
+import { caspyAbi, marketAbi } from './contract';
 
 declare global { interface Window { ethereum?: EIP1193Provider } }
 export const LOCAL_NFT = import.meta.env.PUBLIC_NFT_ENABLED === 'true';
@@ -17,15 +17,16 @@ function walletClient() {
   if (!window.ethereum) throw new Error('No browser wallet found. Open this site in your wallet’s browser, or install a compatible wallet.');
   return createWalletClient({ chain: HEIST_CHAIN, transport: custom(window.ethereum) });
 }
-async function accountAndNetwork() {
+async function accountAndNetwork(selectedAddress?: string) {
   const client = walletClient();
-  const account = useLocalWallet() ? (await client.getAddresses())[2] : (await client.requestAddresses())[0];
+  const addresses = useLocalWallet() ? (await client.getAddresses()).slice(2) : await client.requestAddresses();
+  const account = useLocalWallet() && selectedAddress ? addresses.find(address => address.toLowerCase() === selectedAddress.toLowerCase()) : addresses[0];
   if (!account) throw new Error('Choose an account in your wallet to continue.');
   if (await client.getChainId() !== HEIST_CHAIN.id) await client.switchChain({ id: HEIST_CHAIN.id });
   return { client, account };
 }
-export async function authenticateWallet(): Promise<string> {
-  const { client, account } = await accountAndNetwork();
+export async function authenticateWallet(selectedAddress?: string): Promise<string> {
+  const { client, account } = await accountAndNetwork(selectedAddress);
   const { nonce } = await request<{ nonce: string }>('/auth/nonce', { address: account, chain_id: HEIST_CHAIN.id });
   const message = createSiweMessage({ address: getAddress(account), chainId: HEIST_CHAIN.id, domain: window.location.host, uri: window.location.origin, version: '1', nonce, statement: 'Sign in to Caspy’s Prompt Heist. This does not authorize a transaction.', issuedAt: new Date() });
   const signature = await client.signMessage({ account, message });
@@ -33,18 +34,39 @@ export async function authenticateWallet(): Promise<string> {
   return account;
 }
 
-export type Voucher = { to: `0x${string}`; tier: number; sessionId: `0x${string}`; nonce: string; deadline: string; chainId: number; contract: `0x${string}`; signature: `0x${string}` };
+export type Voucher = { to: `0x${string}`; grade: number; score: number; sessionId: `0x${string}`; promptHash: `0x${string}`; imageHash: `0x${string}`; metadataHash: `0x${string}`; uriHash: `0x${string}`; uri: string; nonce: string; deadline: string; chainId: number; contract: `0x${string}`; signature: `0x${string}` };
 export async function mintVoucher(voucher: Voucher): Promise<`0x${string}`> {
-  if (voucher.chainId !== HEIST_CHAIN.id) throw new Error('This voucher is for a different network.');
+  if (voucher.chainId !== HEIST_CHAIN.id || !LOCAL_NFT) throw new Error('Use the configured local candy chain.');
   const expected = import.meta.env.PUBLIC_CONTRACT_ADDRESS;
-  if (!expected || voucher.contract.toLowerCase() !== expected.toLowerCase()) throw new Error('The claim contract has not been configured or does not match the voucher.');
-  if (![0, 1].includes(voucher.tier) || BigInt(voucher.deadline) <= BigInt(Math.floor(Date.now() / 1000))) throw new Error('The voucher is invalid or expired. Refresh to request another.');
-  const { client, account } = await accountAndNetwork();
-  if (account.toLowerCase() !== voucher.to.toLowerCase()) throw new Error('Connect the wallet that played this heist.');
+  if (!expected || voucher.contract.toLowerCase() !== expected.toLowerCase()) throw new Error('The candy contract does not match the voucher.');
+  const { client, account } = await accountAndNetwork(voucher.to);
+  if (account.toLowerCase() !== voucher.to.toLowerCase()) throw new Error('Connect the wallet that earned this candy.');
   const publicClient = createPublicClient({ chain: HEIST_CHAIN, transport: http(HEIST_RPC) });
   const { request: transaction } = await publicClient.simulateContract({
-    account, address: voucher.contract, abi: caspyAbi, functionName: 'mintWithVoucher',
-    args: [voucher.to, BigInt(voucher.tier), voucher.sessionId, BigInt(voucher.nonce), BigInt(voucher.deadline), voucher.signature],
+    account, address: voucher.contract, abi: caspyAbi, functionName: 'mintCandy',
+    args: [{ ...voucher, nonce: BigInt(voucher.nonce), deadline: BigInt(voucher.deadline) }, voucher.uri, voucher.signature],
   });
   return client.writeContract(transaction);
+}
+export const PROMPT_LICENSE = 'Non-exclusive access to the redacted source prompt for personal use and evaluation by the NFT owner, with onward access on NFT resale. No copyright transfer or exclusivity. Previously delivered copies cannot be recalled.';
+export type CandyTrade = 'list' | 'buy' | 'cancel' | 'withdraw';
+export async function tradeCandy(action: CandyTrade, address: string, contract: `0x${string}`, market: `0x${string}`, tokenId = '0', listingId = '0', priceWei = '0', licensed = false) {
+  if (!LOCAL_NFT || contract.toLowerCase() !== String(import.meta.env.PUBLIC_CONTRACT_ADDRESS).toLowerCase() || market.toLowerCase() !== String(import.meta.env.PUBLIC_MARKET_ADDRESS).toLowerCase()) throw new Error('Use the configured local marketplace.');
+  const { client, account } = await accountAndNetwork(address);
+  if (account.toLowerCase() !== address.toLowerCase()) throw new Error('Reconnect your verified wallet.');
+  const pub = createPublicClient({ chain: foundry, transport: http(HEIST_RPC) });
+  async function confirmed(hash: `0x${string}`) {
+    const receipt = await pub.waitForTransactionReceipt({ hash });
+    if (receipt.status !== 'success') throw new Error('Transaction reverted. Reload to check your asset.');
+  }
+  if (action === 'list') {
+    if (BigInt(priceWei) <= 0n) throw new Error('Enter a positive price.');
+    if (!licensed) await confirmed(await client.writeContract({ account, address: contract, abi: caspyAbi, functionName: 'licensePrompt', args: [BigInt(tokenId), PROMPT_LICENSE] }));
+    await confirmed(await client.writeContract({ account, address: contract, abi: caspyAbi, functionName: 'approve', args: [market, BigInt(tokenId)] }));
+    await confirmed(await client.writeContract({ account, address: market, abi: marketAbi, functionName: 'list', args: [BigInt(tokenId), BigInt(priceWei)] }));
+  } else if (action === 'buy') {
+    await confirmed(await client.writeContract({ account, address: market, abi: marketAbi, functionName: 'buy', args: [BigInt(listingId)], value: BigInt(priceWei) }));
+  } else if (action === 'cancel') {
+    await confirmed(await client.writeContract({ account, address: market, abi: marketAbi, functionName: 'cancel', args: [BigInt(listingId)] }));
+  } else await confirmed(await client.writeContract({ account, address: market, abi: marketAbi, functionName: 'withdraw' }));
 }

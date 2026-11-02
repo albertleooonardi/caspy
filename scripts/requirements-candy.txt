@@ -1,0 +1,5 @@
+# HF hosted inference client only; no model weights or CUDA stack.
+huggingface_hub==0.36.2
+Pillow==11.3.0
+# macOS system Python uses LibreSSL; requests must use its compatible branch.
+urllib3<2

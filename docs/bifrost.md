@@ -3,10 +3,10 @@
 Bifrost is the third-party gateway in the ignored `bifrost/` clone. Caspy's
 configuration and tooling live in the root repository so a fresh checkout can
 reproduce the setup without changing upstream code. The frontend supports a
-local AI playground through `scripts/heist_api.py`. Run `bash run-heist.sh`
+local AI playground through `scripts/heist_api.py`. Run `bash run-heist.sh --ai-only`
 from the root and open <http://localhost:4321/play>. The production FastAPI
 game API and production signing/deployment remain separate work. For wallet
-sign-in and NFT claims on local Anvil, use `bash run-heist.sh --nft`; see the
+sign-in and NFT claims on local Anvil, use `bash run-heist.sh`; see the
 [local NFT guide](nft-local.md).
 
 ## Local setup

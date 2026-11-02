@@ -90,20 +90,17 @@ class LocalNFT:
         entry = games.owned(ident, self.owner(token))
         with entry['lock']:
             data = entry['data']
-            if data['status'] not in ('won', 'lost'):
-                raise ValueError('Finish your heist before claiming a collectible.')
-            tier = 0 if data['status'] == 'won' else 1
-            status = self.call('status', session_id=ident, to=address, tier=tier)
+            if data['status'] != 'won':
+                raise ValueError('Only an independently confirmed win earns a candy NFT.')
+            commitments = self.candies.commitments(ident)
+            status = self.call('status', session_id=ident, to=address, **commitments)
             if status.get('minted'):
-                data.update(status)
-                # Preserve the game result; mint status is a separate field.
-                data['status'] = 'won' if tier == 0 else 'lost'
-                games.persist()
-                raise ValueError('This heist already minted its collectible.')
+                self.candies.mark_minted(ident, status['token_id'])
+                raise ValueError('This heist already minted its candy.')
             cached = entry.get('voucher')
-            if cached and int(cached['deadline']) > time.time()+60:
+            if cached and 'imageHash' in cached and int(cached['deadline']) > time.time()+60:
                 return copy.deepcopy(cached)
-            voucher = self.call('sign', session_id=ident, to=address, tier=tier,
+            voucher = self.call('sign', session_id=ident, to=address, **commitments,
                                 nonce=str(secrets.randbits(128)), deadline=int(time.time())+86400)
             entry['voucher'] = voucher
             games.persist()
@@ -114,12 +111,21 @@ class LocalNFT:
         entry = games.owned(ident, self.owner(token))
         with entry['lock']:
             data = entry['data']
-            if data['status'] not in ('won', 'lost'):
-                raise ValueError('This heist is not eligible for minting.')
+            if data['status'] != 'won':
+                return {'status': 'not_eligible', 'minted': False}
+            try:
+                commitments = self.candies.commitments(ident)
+            except LookupError:
+                return {'status': 'awaiting_image', 'minted': False}
+            except Exception as error:
+                from platform_store import Fault
+                if isinstance(error, Fault) and error.status in (404, 409):
+                    return {'status': 'awaiting_image', 'minted': False}
+                raise
             tx_hash = tx_hash or data.get('tx_hash')
             if tx_hash is not None and (not isinstance(tx_hash, str) or not re.fullmatch(r'0x[0-9a-fA-F]{64}', tx_hash)):
                 raise ValueError('Invalid transaction hash.')
-            result = self.call('status', session_id=ident, to=address, tier=0 if data['status'] == 'won' else 1,
+            result = self.call('status', session_id=ident, to=address, **commitments,
                                **({'tx_hash': tx_hash} if tx_hash else {}))
             for key in ('minted', 'tx_hash', 'token_id', 'contract', 'chain_id'):
                 if key in result:
@@ -127,5 +133,7 @@ class LocalNFT:
             # Allow a fresh transaction after a reverted claim.
             if result['status'] == 'failed':
                 data.pop('tx_hash', None)
+            if result.get('minted'):
+                self.candies.mark_minted(ident, result['token_id'])
             games.persist()
             return result

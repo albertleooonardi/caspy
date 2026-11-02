@@ -18,6 +18,10 @@ import unittest
 import urllib.request
 
 from heist_api import Games, Gateway, Handler
+from platform_store import Platform
+from candy_store import CandyStore
+from test_candy_store import FixtureRenderer
+from http.cookies import SimpleCookie
 from nft_game import LocalNFT, ROOT
 from test_heist_api import FakeGateway
 
@@ -50,6 +54,9 @@ class NFTIntegration(unittest.TestCase):
         cls.config = json.loads(config.read_text())
         cls.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
         cls.server.nft = LocalNFT(cls.config)
+        cls.server.platform = Platform(Path(cls.temp.name) / 'platform.sqlite3')
+        cls.server.candy = CandyStore(cls.server.platform, cls.server.nft, Path(cls.temp.name)/'assets', FixtureRenderer())
+        cls.server.nft.candies = cls.server.candy
         cls.store = Path(cls.temp.name) / 'games.json'
         cls.server.games = Games(FakeGateway(verdict='YIELD'), cls.store)
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
@@ -57,6 +64,7 @@ class NFTIntegration(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        cls.server.candy.close()
         cls.server.shutdown()
         cls.server.server_close()
         cls.thread.join()
@@ -78,8 +86,13 @@ class NFTIntegration(unittest.TestCase):
             headers['Cookie'] = self.cookie
         conn.request('GET' if body is None else 'POST', path, body=None if body is None else json.dumps(body), headers=headers)
         response = conn.getresponse()
-        if response.getheader('Set-Cookie'):
-            self.cookie = response.getheader('Set-Cookie').split(';')[0]
+        for key, value in response.getheaders():
+            if key.lower() == 'set-cookie':
+                parsed = SimpleCookie(); parsed.load(value)
+                for name, item in parsed.items():
+                    if item.value: self.cookies[name] = item.value
+                    else: self.cookies.pop(name, None)
+        self.cookie = '; '.join(f'{key}={value}' for key, value in self.cookies.items())
         data = response.read().decode()
         self.assertEqual(response.status, expected, data)
         streaming = response.getheader('Content-Type') == 'text/event-stream'
@@ -87,7 +100,8 @@ class NFTIntegration(unittest.TestCase):
         return data if streaming else json.loads(data)
 
     def sign_in(self, account):
-        self.account, self.cookie = account, ''
+        self.account, self.cookie, self.cookies = account, '', {}
+        self.api('/account/register', {'name': f'Player {account}', 'email': f'player{account}@example.test', 'password': 'testing-password-123', 'account_type': 'contributor', 'terms_accepted': True})
         address = self.driver('address')['address']
         nonce = self.api('/auth/nonce', {'address': address, 'chain_id': 31337})['nonce']
         old_cookie = self.cookie
@@ -109,12 +123,26 @@ class NFTIntegration(unittest.TestCase):
             self.assertIn('event: final', stream)
         game = self.api('/game/session/' + game['id'])
         self.assertEqual(game['status'], 'won' if won else 'lost')
+        if not won:
+            self.api('/candy/generate', {'session_id':game['id'],'accept_provider':True}, expected=403)
+            self.api('/game/voucher', {'session_id':game['id']}, expected=400)
+            self.assertFalse(self.api('/mint/status/'+game['id'])['minted'])
+            self.assertNotIn('candy',game)
+            return
+        self.assertEqual(game['candy']['state'],'earned')
+        self.api('/candy/generate', {'session_id':game['id'],'accept_provider':False}, expected=400)
+        self.api('/candy/generate', {'session_id':game['id'],'accept_provider':True})
+        for _ in range(50):
+            game=self.api('/game/session/'+game['id'])
+            if game['candy']['state']=='ready': break
+            time.sleep(.05)
+        self.assertEqual(game['candy']['state'],'ready')
         # Client-supplied tiers and recipients are ignored; the server owns both.
         voucher = self.api('/game/voucher', {'session_id': game['id'], 'tier': 1 if won else 0, 'to': '0x' + '11'*20})
-        self.assertEqual(voucher['tier'], 0 if won else 1)
+        self.assertEqual(voucher['grade'], game['candy']['assessment']['grade'])
         self.assertEqual(voucher['to'].lower(), address.lower())
         self.assertEqual(voucher, self.api('/game/voucher', {'session_id': game['id']}))
-        tampered = {**voucher, 'tier': 1 if won else 0}
+        tampered = {**voucher, 'grade': 1 if voucher['grade'] != 1 else 4}
         with self.assertRaises(ValueError):
             self.driver('mint', voucher=tampered)
         transaction = self.driver('mint', voucher=voucher)
@@ -131,9 +159,32 @@ class NFTIntegration(unittest.TestCase):
         self.assertEqual(restored['id'], game['id'])
         self.assertTrue(restored['minted'])
         self.assertEqual(restored['token_id'], status['token_id'])
-        self.assertEqual(self.api('/metadata/' + ('treat' if won else 'trick') + '/' + status['token_id'])['attributes'][0]['value'], 'Treat' if won else 'Trick')
+        available = self.api('/auth/local-wallets')['wallets']
+        self.assertTrue(any(item['address'].lower() == address.lower() and item['linked'] for item in available))
+        collection=self.api('/candy/collection')['tokens']
+        self.assertEqual(collection[0]['token_id'],status['token_id'])
+        self.assertEqual(self.api('/candy/prompt/'+status['token_id'])['prompt'],'A clever ghost bakery trade.')
+        self.driver('write',contract=self.config['contract'],function_name='licensePrompt',args=[status['token_id'],'Non-exclusive source prompt access; no copyright transfer.'])
+        self.driver('write',contract=self.config['contract'],function_name='approve',args=[self.config['market'],status['token_id']])
+        self.driver('write',contract=self.config['market'],market=True,function_name='list',args=[status['token_id'],'1000'])
+        listed=self.api('/market/listings')['listings'][0]
+        self.assertNotIn('prompt',listed)
+        seller_cookie,seller_cookies=self.cookie,dict(self.cookies)
+        seller=self.account
+        buyer=self.sign_in(8)
+        self.api('/candy/prompt/'+status['token_id'],expected=403)
+        self.driver('write',contract=self.config['market'],market=True,function_name='buy',args=[listed['listing_id']],value='1000')
+        self.assertEqual(self.api('/candy/prompt/'+status['token_id'])['prompt'],'A clever ghost bakery trade.')
+        self.assertEqual(self.api('/candy/collection')['tokens'][0]['owner'].lower(),buyer.lower())
+        self.account=seller
+        # Restore the original authenticated account cookies for the access regression below.
+        self.cookie,self.cookies=seller_cookie,seller_cookies
+        self.api('/candy/prompt/'+status['token_id'],expected=403)
+        self.assertEqual(self.api('/market/account')['proceeds_wei'],'1000')
+        self.driver('write',contract=self.config['market'],market=True,function_name='withdraw')
         # Another signed wallet cannot read or claim the original session.
         self.sign_in(account + 5)
+        self.assertFalse(any(item['address'].lower() == address.lower() for item in self.api('/auth/local-wallets')['wallets']))
         self.api('/game/session/' + game['id'], expected=404)
         self.api('/game/voucher', {'session_id': game['id']}, expected=404)
         self.api('/auth/logout', {})
@@ -156,8 +207,9 @@ class NFTIntegration(unittest.TestCase):
         self.account = 5
         address = self.driver('address')['address']
         signer = VoucherSigner(signer_account.key.hex(), self.config['contract'], 31337)
-        signed = signer.create_voucher(address, 0, '0x'+secrets.token_hex(32), 1, int(time.time())+3600)
-        voucher = {**signed['voucher'], 'nonce': '1', 'deadline': str(signed['voucher']['deadline']), 'signature': signed['signature'], 'chainId': 31337, 'contract': self.config['contract']}
+        uri='http://localhost/explicit-test-fixture.json'
+        signed = signer.create_voucher(address, 92, '0x'+secrets.token_hex(32), *(['0x'+'12'*32]*3), uri, 1, int(time.time())+3600)
+        voucher = {**signed['voucher'], 'uri': signed['uri'], 'nonce': '1', 'deadline': str(signed['voucher']['deadline']), 'signature': signed['signature'], 'chainId': 31337, 'contract': self.config['contract']}
         self.assertTrue(self.driver('mint', voucher=voucher)['hash'].startswith('0x'))
 
     @unittest.skipUnless(os.environ.get('CASPY_LIVE_AI_TEST') == '1', 'Set CASPY_LIVE_AI_TEST=1 for a real Bifrost game and local NFT mint.')
@@ -185,10 +237,16 @@ class NFTIntegration(unittest.TestCase):
                 break
             time.sleep(2)
         self.assertIn(game['status'], ('won', 'lost'))
-        voucher = self.api('/game/voucher', {'session_id': game['id']})
-        transaction = self.driver('mint', voucher=voucher)
-        status = self.api('/mint/submit', {'session_id': game['id'], 'tx_hash': transaction['hash']})
-        self.assertTrue(status['minted'])
+        if game['status']=='lost':
+            self.api('/game/voucher', {'session_id':game['id']}, expected=400)
+            return
+        self.api('/candy/generate', {'session_id':game['id'],'accept_provider':True})
+        for _ in range(100):
+            if self.api('/game/session/'+game['id'])['candy']['state']=='ready': break
+            time.sleep(.05)
+        voucher=self.api('/game/voucher', {'session_id':game['id']})
+        transaction=self.driver('mint', voucher=voucher)
+        self.assertTrue(self.api('/mint/submit', {'session_id':game['id'],'tx_hash':transaction['hash']})['minted'])
 
 
 if __name__ == '__main__':

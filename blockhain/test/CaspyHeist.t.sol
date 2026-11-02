@@ -1,260 +1,112 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
-
 import {Test} from "forge-std/Test.sol";
 import {CaspyHeist} from "../src/CaspyHeist.sol";
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
-
-contract ReenteringRecipient is IERC721Receiver {
-    CaspyHeist target;
-    bytes second;
-    bool public reentered;
-
-    constructor(CaspyHeist target_) { target = target_; }
-
-    function attack(bytes memory first_, bytes memory second_) external {
-        second = second_;
-        (bool ok,) = address(target).call(first_);
-        require(ok, "Outer mint failed");
-    }
-
-    function onERC721Received(address, address, uint256, bytes calldata) external returns (bytes4) {
-        (reentered,) = address(target).call(second);
-        return IERC721Receiver.onERC721Received.selector;
-    }
-}
+import {CaspyCandyMarket} from "../src/CaspyCandyMarket.sol";
 
 contract CaspyHeistTest is Test {
-    using ECDSA for bytes32;
-
-    CaspyHeist public contract_;
-    address public admin;
-    address public signer;
-    address public player;
-
-    bytes32 private signerPrivateKey;
-    uint256 private playerPrivateKey = 0x1234567890123456789012345678901234567890123456789012345678901234;
-    uint256 private relayerPrivateKey = 0x9876543210987654321098765432109876543210987654321098765432109876;
-
-    // Constants
-    uint256 constant TREAT_SUPPLY = 1000;
-    string constant BASE_URI = "ipfs://QmXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX/";
-
+    CaspyHeist candy;
+    CaspyCandyMarket market;
+    uint256 constant KEY=0xA11CE;
+    address signer;
+    address player;
+    address buyer;
+    string constant URI="http://localhost/fixture-metadata.json";
+    string constant TERMS="Non-exclusive source prompt access with this NFT; no copyright transfer.";
     function setUp() public {
-        admin = makeAddr("admin");
-        signerPrivateKey = bytes32(uint256(0xA11CE));
-        signer = vm.addr(uint256(signerPrivateKey));
-        player = vm.addr(playerPrivateKey);
-
-        vm.startPrank(admin);
-        contract_ = new CaspyHeist(
-            "Caspy's Treats",
-            "CASPY",
-            signer,
-            BASE_URI,
-            TREAT_SUPPLY
-        );
-        vm.stopPrank();
+        signer=vm.addr(KEY);player=makeAddr("player");buyer=makeAddr("buyer");
+        candy=new CaspyHeist("Caspy Candies","CASPY",signer,"",2);
+        market=new CaspyCandyMarket(candy);
     }
-
-    // =====================
-    // Deployment Tests
-    // =====================
-
-    function test_Deploy_InitialState() public {
-        assertEq(contract_.name(), "Caspy's Treats");
-        assertEq(contract_.symbol(), "CASPY");
-        assertEq(contract_.signer(), signer);
-        assertEq(contract_.baseURI(), BASE_URI);
-        assertEq(contract_.treatSupply(), TREAT_SUPPLY);
-        assertEq(contract_.treatMinted(), 0);
-        assertEq(contract_.trickMinted(), 0);
+    function voucher(address to,bytes32 session,uint16 score) internal view returns(CaspyHeist.CandyVoucher memory v) {
+        v=CaspyHeist.CandyVoucher(to,score>=90?4:score>=75?3:score>=60?2:1,score,session,sha256("fixture prompt"),sha256("fixture image"),sha256("fixture metadata"),keccak256(bytes(URI)),1,block.timestamp+1 days);
     }
-
-    function test_Deploy_AdminHasCorrectRoles() public {
-        assertTrue(contract_.hasRole(contract_.DEFAULT_ADMIN_ROLE(), admin));
-        assertTrue(contract_.hasRole(contract_.ADMIN_ROLE(), admin));
-        assertTrue(contract_.hasRole(contract_.PAUSER_ROLE(), admin));
+    function sig(CaspyHeist.CandyVoucher memory v) internal view returns(bytes memory) {
+        bytes32 domain=keccak256(abi.encode(keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),keccak256("Caspy Candies"),keccak256("2"),block.chainid,address(candy)));
+        bytes32 typeHash=keccak256("CandyVoucher(address to,uint8 grade,uint16 score,bytes32 sessionId,bytes32 promptHash,bytes32 imageHash,bytes32 metadataHash,bytes32 uriHash,uint256 nonce,uint256 deadline)");
+        bytes32 payload=keccak256(abi.encode(typeHash,v.to,v.grade,v.score,v.sessionId,v.promptHash,v.imageHash,v.metadataHash,v.uriHash,v.nonce,v.deadline));
+        (uint8 vv,bytes32 rr,bytes32 ss)=vm.sign(KEY,keccak256(abi.encodePacked("\x19\x01",domain,payload)));
+        return abi.encodePacked(rr,ss,vv);
     }
-
-    function test_Deploy_SignerHasSignerRole() public {
-        assertTrue(contract_.hasRole(contract_.SIGNER_ROLE(), signer));
+    function mint(address to,bytes32 id,uint16 score) internal {
+        mintExpected(to,id,score,bytes4(0));
     }
-
-    // =====================
-    // Configuration Tests
-    // =====================
-
-    function test_SetBaseURI() public {
-        string memory newURI = "https://example.com/metadata/";
-        vm.prank(admin);
-        contract_.setBaseURI(newURI);
-        assertEq(contract_.baseURI(), newURI);
+    function mintExpected(address to,bytes32 id,uint16 score,bytes4 expected) internal {
+        CaspyHeist.CandyVoucher memory v=voucher(to,id,score);bytes memory signature=sig(v);
+        vm.prank(to);if(expected!=bytes4(0)) vm.expectRevert(expected);candy.mintCandy(v,URI,signature);
     }
-
-    function test_SetBaseURI_RejectsFrozen() public {
-        vm.prank(admin);
-        contract_.freezeBaseURI();
-
-        vm.prank(admin);
-        vm.expectRevert(CaspyHeist.BaseURIIsFrozen.selector);
-        contract_.setBaseURI("https://other.com/");
+    function listed() internal returns(uint256 id) {
+        mint(player,bytes32(uint256(1)),94);
+        vm.startPrank(player);candy.licensePrompt(1,TERMS);candy.approve(address(market),1);id=market.list(1,1 ether);vm.stopPrank();
     }
-
-    function test_FreezeBaseURI() public {
-        vm.prank(admin);
-        contract_.freezeBaseURI();
-        assertTrue(contract_.baseURIFrozen());
+    function test_FiniteSupplyAndContentCommitments() public {
+        mint(player,bytes32(uint256(1)),92);
+        assertEq(candy.ownerOf(1),player);assertEq(candy.tokenGrade(1),4);assertEq(candy.tokenScore(1),92);
+        assertEq(candy.tokenURI(1),URI);assertEq(candy.tokenImageHash(1),sha256("fixture image"));assertEq(candy.tokenMetadataHash(1),sha256("fixture metadata"));
+        assertEq(candy.maxSupply(),2);assertEq(candy.totalMinted(),1);assertEq(candy.VERSION(),2);
     }
-
-    function test_SetSigner() public {
-        address newSigner = makeAddr("newSigner");
-        vm.prank(admin);
-        contract_.setSigner(newSigner);
-        assertEq(contract_.signer(), newSigner);
-        assertTrue(contract_.hasRole(contract_.SIGNER_ROLE(), newSigner));
-        assertFalse(contract_.hasRole(contract_.SIGNER_ROLE(), signer));
+    function test_AllGradeThresholds() public view {
+        assertEq(candy.gradeForScore(59),1);assertEq(candy.gradeForScore(60),2);assertEq(candy.gradeForScore(74),2);
+        assertEq(candy.gradeForScore(75),3);assertEq(candy.gradeForScore(89),3);assertEq(candy.gradeForScore(90),4);assertEq(candy.gradeForScore(100),4);
     }
-
-    function test_SetSigner_RejectsZeroAddress() public {
-        vm.prank(admin);
-        vm.expectRevert(CaspyHeist.InvalidSigner.selector);
-        contract_.setSigner(address(0));
+    function test_RejectsGradeTampering() public {
+        CaspyHeist.CandyVoucher memory v=voucher(player,bytes32(uint256(1)),50);bytes memory signature=sig(v);v.grade=4;
+        vm.prank(player);vm.expectRevert(CaspyHeist.InvalidVoucher.selector);candy.mintCandy(v,URI,signature);
     }
-
-    function test_SetTreatSupply() public {
-        uint256 newSupply = 5000;
-        vm.prank(admin);
-        contract_.setTreatSupply(newSupply);
-        assertEq(contract_.treatSupply(), newSupply);
+    function test_RejectsImageAndMetadataTampering() public {
+        CaspyHeist.CandyVoucher memory v=voucher(player,bytes32(uint256(1)),92);bytes memory signature=sig(v);v.imageHash=sha256("other");
+        vm.prank(player);vm.expectRevert(CaspyHeist.InvalidSignature.selector);candy.mintCandy(v,URI,signature);
     }
-
-    // =====================
-    // Pause/Unpause Tests
-    // =====================
-
-    function test_Pause_PreventsMinting() public {
-        vm.prank(admin);
-        contract_.pause();
-        assertTrue(contract_.paused());
-        vm.expectRevert(bytes("Pausable: paused"));
-        _mint(player, 0, keccak256("paused"), block.timestamp + 1 days);
+    function test_RejectsChangedURI() public {
+        CaspyHeist.CandyVoucher memory v=voucher(player,bytes32(uint256(1)),92);bytes memory signature=sig(v);
+        vm.prank(player);vm.expectRevert(CaspyHeist.InvalidVoucher.selector);candy.mintCandy(v,"https://evil.example/other",signature);
     }
-
-    function test_Unpause_AllowsMinting() public {
-        vm.prank(admin);
-        contract_.pause();
-
-        vm.prank(admin);
-        contract_.unpause();
-        assertFalse(contract_.paused());
+    function test_RejectsReplayAndOneMintPerWallet() public {
+        mint(player,bytes32(uint256(1)),92);
+        mintExpected(player,bytes32(uint256(1)),92,CaspyHeist.SessionAlreadyMinted.selector);
+        mintExpected(player,bytes32(uint256(2)),92,CaspyHeist.WalletAlreadyMinted.selector);
     }
-
-    // =====================
-    // TokenURI Tests
-    // =====================
-
-    function test_TokenURI_Format() public {
-        _mint(player, 0, keccak256("uri"), block.timestamp + 1 days);
-        assertEq(contract_.tokenURI(1), string(abi.encodePacked(BASE_URI, "treat/1")));
+    function test_EnforcesHardSupplyCap() public {
+        mint(player,bytes32(uint256(1)),92);mint(buyer,bytes32(uint256(2)),80);
+        mintExpected(makeAddr("third"),bytes32(uint256(3)),60,CaspyHeist.SupplyExhausted.selector);
     }
-
-    function _signature(address to, uint256 tier, bytes32 sessionId, uint256 deadline) internal view returns (bytes memory) {
-        bytes32 domain = keccak256(abi.encode(
-            keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-            keccak256(bytes("Caspy's Treats")), keccak256("1"), block.chainid, address(contract_)
-        ));
-        bytes32 payload = keccak256(abi.encode(keccak256("Voucher(address to,uint256 tier,bytes32 sessionId,uint256 nonce,uint256 deadline,uint256 chainId,address verifyingContract)"), to, tier, sessionId, uint256(1), deadline, block.chainid, address(contract_)));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(uint256(signerPrivateKey), keccak256(abi.encodePacked("\x19\x01", domain, payload)));
-        return abi.encodePacked(r, s, v);
+    function test_RejectsOtherRecipientAndChain() public {
+        CaspyHeist.CandyVoucher memory v=voucher(player,bytes32(uint256(1)),92);bytes memory signature=sig(v);
+        vm.prank(buyer);vm.expectRevert(CaspyHeist.UnauthorizedRecipient.selector);candy.mintCandy(v,URI,signature);
+        vm.chainId(block.chainid+1);vm.prank(player);vm.expectRevert(CaspyHeist.InvalidSignature.selector);candy.mintCandy(v,URI,signature);
     }
-
-    function _mint(address to, uint256 tier, bytes32 id, uint256 deadline) internal {
-        bytes memory sig = _signature(to, tier, id, deadline);
-        vm.prank(to);
-        contract_.mintWithVoucher(to, tier, id, 1, deadline, sig);
+    function test_RejectsExpiredVoucherAndPausedMint() public {
+        vm.warp(100);CaspyHeist.CandyVoucher memory v=voucher(player,bytes32(uint256(1)),92);v.deadline=99;bytes memory signature=sig(v);
+        vm.prank(player);vm.expectRevert(CaspyHeist.ExpiredVoucher.selector);candy.mintCandy(v,URI,signature);
+        candy.pause();v=voucher(player,bytes32(uint256(1)),92);signature=sig(v);vm.prank(player);vm.expectRevert(bytes("Pausable: paused"));candy.mintCandy(v,URI,signature);
     }
-
-    function test_MintTreatAndTrick() public {
-        _mint(player, 0, keccak256("treat"), block.timestamp + 1 days);
-        _mint(player, 1, keccak256("trick"), block.timestamp + 1 days);
-        assertEq(contract_.ownerOf(1), player);
-        assertEq(contract_.tokenTier(1), 0);
-        assertEq(contract_.tokenTier(2), 1);
-        assertEq(contract_.treatMinted(), 1);
-        assertEq(contract_.trickMinted(), 1);
+    function test_MarketEscrowAndExactPrice() public {
+        uint256 id=listed();assertEq(candy.ownerOf(1),address(market));vm.deal(buyer,2 ether);
+        vm.prank(buyer);vm.expectRevert(bytes("Exact price required"));market.buy{value:.5 ether}(id);
+        vm.prank(buyer);market.buy{value:1 ether}(id);assertEq(candy.ownerOf(1),buyer);assertEq(market.proceeds(player),1 ether);
+        uint256 before=player.balance;vm.prank(player);market.withdraw();assertEq(player.balance,before+1 ether);assertEq(market.proceeds(player),0);
+        vm.prank(buyer);vm.expectRevert(bytes("Listing inactive"));market.buy{value:1 ether}(id);
     }
-
-    function test_RejectsReplay() public {
-        bytes32 id = keccak256("replay");
-        _mint(player, 0, id, block.timestamp + 1 days);
-        vm.expectRevert(CaspyHeist.SessionAlreadyMinted.selector);
-        _mint(player, 0, id, block.timestamp + 1 days);
+    function test_MarketRequiresOwnerApprovalAndPromptLicense() public {
+        mint(player,bytes32(uint256(1)),92);
+        vm.prank(buyer);vm.expectRevert(bytes("Owner only"));market.list(1,1 ether);
+        vm.prank(player);vm.expectRevert(bytes("Prompt license required"));market.list(1,1 ether);
+        vm.prank(player);candy.licensePrompt(1,TERMS);
+        vm.prank(player);vm.expectRevert(bytes("ERC721: caller is not token owner or approved"));market.list(1,1 ether);
     }
-
-    function test_RejectsExpired() public {
-        vm.warp(100);
-        vm.expectRevert(CaspyHeist.ExpiredVoucher.selector);
-        _mint(player, 0, keccak256("expired"), 99);
+    function test_CreatorLicenseCannotBeRewrittenByBuyer() public {
+        uint256 id=listed();vm.deal(buyer,1 ether);vm.prank(buyer);market.buy{value:1 ether}(id);
+        vm.prank(buyer);vm.expectRevert(bytes("Creator-owner only"));candy.licensePrompt(1,"Different license with different terms.");
+        assertEq(candy.promptLicense(1),TERMS);
+        vm.startPrank(buyer);candy.approve(address(market),1);uint256 next=market.list(1,2 ether);market.cancel(next);vm.stopPrank();assertEq(candy.ownerOf(1),buyer);
     }
-
-    function test_RejectsForgedTier() public {
-        bytes32 id = keccak256("tamper");
-        bytes memory sig = _signature(player, 1, id, block.timestamp + 1 days);
-        vm.prank(player);
-        vm.expectRevert(CaspyHeist.InvalidSignature.selector);
-        contract_.mintWithVoucher(player, 0, id, 1, block.timestamp + 1 days, sig);
+    function test_CancelSellerOnlyAndNoSelfPurchase() public {
+        uint256 id=listed();vm.prank(buyer);vm.expectRevert(bytes("Seller only"));market.cancel(id);
+        vm.deal(player,1 ether);vm.prank(player);vm.expectRevert(bytes("Cannot buy own listing"));market.buy{value:1 ether}(id);
+        vm.prank(player);market.cancel(id);assertEq(candy.ownerOf(1),player);
     }
-
-    function test_RejectsOtherRecipient() public {
-        bytes32 id = keccak256("recipient");
-        bytes memory sig = _signature(player, 0, id, block.timestamp + 1 days);
-        vm.prank(makeAddr("stranger"));
-        vm.expectRevert(CaspyHeist.UnauthorizedRecipient.selector);
-        contract_.mintWithVoucher(player, 0, id, 1, block.timestamp + 1 days, sig);
-    }
-
-    function test_EnforcesTreatCap() public {
-        vm.prank(admin);
-        contract_.setTreatSupply(1);
-        _mint(player, 0, keccak256("first"), block.timestamp + 1 days);
-        vm.expectRevert(CaspyHeist.TreatSupplyExhausted.selector);
-        _mint(player, 0, keccak256("second"), block.timestamp + 1 days);
-        _mint(player, 1, keccak256("trick"), block.timestamp + 1 days);
-    }
-
-    function testFuzz_TreatSupplyNeverExceeded(uint8 count) public {
-        vm.prank(admin);
-        contract_.setTreatSupply(5);
-        uint256 tries = bound(uint256(count), 1, 10);
-        for (uint256 i; i < tries; i++) {
-            if (i >= 5) vm.expectRevert(CaspyHeist.TreatSupplyExhausted.selector);
-            _mint(player, 0, bytes32(i), block.timestamp + 1 days);
-        }
-        assertLe(contract_.treatMinted(), 5);
-    }
-
-    function test_RejectsReentrancyDuringReceiverCallback() public {
-        ReenteringRecipient receiver = new ReenteringRecipient(contract_);
-        uint256 deadline = block.timestamp + 1 days;
-        bytes32 firstId = keccak256("outer");
-        bytes32 secondId = keccak256("inner");
-        bytes memory first = abi.encodeCall(contract_.mintWithVoucher, (address(receiver), 0, firstId, 1, deadline, _signature(address(receiver), 0, firstId, deadline)));
-        bytes memory second = abi.encodeCall(contract_.mintWithVoucher, (address(receiver), 0, secondId, 1, deadline, _signature(address(receiver), 0, secondId, deadline)));
-        receiver.attack(first, second);
-        assertFalse(receiver.reentered());
-        assertEq(contract_.treatMinted(), 1);
-        assertFalse(contract_.usedSessions(secondId));
-    }
-
-    function test_RejectsWrongChainSignature() public {
-        bytes32 id = keccak256("chain");
-        uint256 deadline = block.timestamp + 1 days;
-        bytes memory sig = _signature(player, 0, id, deadline);
-        vm.chainId(block.chainid + 1);
-        vm.prank(player);
-        vm.expectRevert(CaspyHeist.InvalidSignature.selector);
-        contract_.mintWithVoucher(player, 0, id, 1, deadline, sig);
+    function testFuzz_GradeAlwaysDerivedFromScore(uint16 raw) public {
+        uint16 score=uint16(bound(raw,0,100));mint(player,bytes32(uint256(1)),score);
+        assertEq(candy.tokenGrade(1),candy.gradeForScore(score));assertLe(candy.totalMinted(),candy.maxSupply());
     }
 }

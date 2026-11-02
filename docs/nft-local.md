@@ -1,3 +1,5 @@
+> Current v2: only winning prompts earn FLUX-generated graded candies; losses mint nothing. See [candy setup](candy.md) and PRD section 21. Treat/Trick v1 commands below are historical; use `bash run-heist.sh` for v2.
+
 # Caspy local NFT integration
 
 The NFT work from `origin/dev-dapit` is connected to the Bifrost game. This
@@ -11,7 +13,7 @@ Requires Python 3, Node 22+ and a root `.env` that passes
 frontend on ports 8000/4321, then run from the repository root:
 
 ```bash
-bash run-heist.sh --nft
+bash run-heist.sh
 ```
 
 The launcher installs the pinned local contract tools if needed, builds the
@@ -21,23 +23,25 @@ network access to npm, GitHub and the Solidity compiler distribution.
 
 Open <http://localhost:4321/play>:
 
-1. Choose **Connect wallet**, then **Connect local test wallet**.
-2. Choose **Start my heist** and send up to three prompts.
-3. If judging is temporarily unavailable, use **Check judge again**. This
+1. Create or sign in to your Caspy account at `/register` or `/login`.
+2. Choose **Connect wallet**, select an available test account, then **Connect local test wallet**.
+3. Choose **Start my heist** and send up to three prompts.
+4. If judging is temporarily unavailable, use **Check judge again**. This
    retries judging the saved reply without another actor call or attempt.
-4. Open your result, choose **Claim your Treat/Trick**, then **Mint local
+5. Open your result, choose **Claim your Treat/Trick**, then **Mint local
    collectible**.
-5. The confirmation displays your token ID and contract address after checking
+6. The confirmation displays your token ID and contract address after checking
    the contract's `MintWithVoucher` event.
 
-The test wallet uses Anvil's third unlocked account. Anvil's first account
+The wallet picker offers Anvil's unlocked accounts starting with its third account, excluding wallets linked to other Caspy accounts. Anvil's first account
 deploys the contract; its second account holds `SIGNER_ROLE`. There are no
 private keys in the frontend, API configuration or model input. These unlocked
 development accounts are exclusively for the local chain.
 
 Ctrl+C stops the services started by the launcher. An existing Bifrost/Anvil
-instance is left running. `bash run-heist.sh` keeps the separate AI playground
-without wallets or claims; `--nft` enables the NFT flow.
+instance is left running. The default starts all four services. Use
+`bash run-heist.sh --ai-only` for the separate AI playground without blockchain
+or NFT claims. `--nft` remains an alias for the default.
 
 ## What is connected
 

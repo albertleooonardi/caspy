@@ -11,11 +11,19 @@ npm run dev
 
 Open http://localhost:4321. `npm run build` outputs the static site to `dist/`; `npm run preview` serves the production build.
 
+## Accounts and research
+
+The launcher connects the local account API automatically. Register at `/register`,
+sign in at `/login`, manage contributions at `/account`, create/review campaigns
+at `/research`, and request/download licensed datasets at `/datasets`. Account
+sessions and permissions are enforced by the server. See
+[the platform guide](../docs/platform.md) for the complete opt-in workflow.
+
 ## Screens
 
 - `/` — landing, how to play, collectibles, FAQ
 - `/play` — streaming chat, three candy attempt counters, 500-character limit
-- `/how-to-play` — 56-second animated, narrated demo explainer, chapter links, and written instructions
+- `/how-to-play` — 100-second kinetic typography film, interactive chapters, player/researcher guides, and a knowledge check
 - `/result` — Treat, Trick, pending-review, and unavailable states
 - `/claim` — approval, pending, confirmed, retry, and transaction explorer states
 - `/gallery` — season-locked Wall of Heists with optional, clearly labeled illustrative examples and filters
@@ -23,14 +31,14 @@ Open http://localhost:4321. `npm run build` outputs the static site to `dist/`; 
 
 ## Demo mode
 
-For the full **local NFT game**, run `bash run-heist.sh --nft` from the root.
+For the full **local NFT game**, run `bash run-heist.sh` from the root.
 Connect the local test wallet, play against the Bifrost actor/judge, then mint
 the server-confirmed result on Anvil (31337). The launcher provides
 `PUBLIC_NFT_ENABLED=true`, `PUBLIC_CONTRACT_ADDRESS` and `PUBLIC_NFT_SEASON` to
 Astro. No browser extension or private key is needed. See
 [the local NFT guide](../docs/nft-local.md).
 
-For actual AI responses through the local Bifrost gateway, run `bash run-heist.sh`
+For AI-only gameplay without NFT claims, run `bash run-heist.sh --ai-only`
 from the repository root. Or run `python3 scripts/heist_api.py` from the root
 alongside Bifrost, set `PUBLIC_LOCAL_AI=true` in `frontend/.env`, and restart
 `npm run dev`. The same-origin `/api` development proxy connects to port 8000.
@@ -81,21 +89,26 @@ Tests cover multiline SSE, CRLF framing, split UTF-8, interrupted streams, inval
 
 ## Animated walkthrough
 
-The homepage includes the tutorial video, and the navigation and play screen link
-to `/how-to-play`. The guide has native video controls, chapter shortcuts, English
-WebVTT captions, a poster, a download link, and a written alternative. It does not
-autoplay. The animated explainer combines Caspy artwork, motion graphics, and recorded
-demo UI. It includes energetic English narration, an original Halloween soundtrack,
-typed chat bubbles, candy counters,
-cursor highlights, and smooth transitions. It does not demonstrate live AI,
-wallet authorization, or real minting.
+The homepage and `/how-to-play` use a 100-second, 1600×900, 30 fps H.264/AAC
+film with ten chapters. Large kinetic typography, swipe reveals, illustrated
+workflow cards, floating Caspy artwork, bat silhouettes, drifting stars and candy
+counters guide accounts, consent, prompts, judging, results, local NFT claims
+and the research workspace. It is an illustrated walkthrough, not a recording
+of a real account, AI evaluation, purchase or mint.
 
-The 56-second, 24 fps H.264/AAC showcase and related assets use the
-`caspy-showcase` prefix in `public/videos/` (about 16.8 MB total). Instructions
-are also burned into the video, with a WebVTT caption track and a written guide.
-The original `caspy-walkthrough` files remain for existing download links.
-Update the video and its seven chapter times together when gameplay changes.
+Audio is an original Halloween score with bells, organ, wind and a synthesized
+wordless ghost choir. There is **no narration or spoken voiceover**. The player
+starts muted and does not autoplay; use its sound button to enable the score.
 
-The Halloween audio edit uses a brighter Eddy voice, celesta/bell arpeggios,
-soft organ and bass, and airy textures. Automatic music ducking keeps narration
-clear. The video keeps its 56-second animation, captions, and chapter timing.
+Interactive controls include chapter seeking, previous/next, replay, chapter
+looping, playback speed, native fullscreen/captions, and contextual action links.
+The full guide offers player/researcher routes, replay links from written steps,
+and a three-question local knowledge check. Quiz answers stay in component state
+and are never submitted. Reduced-motion preferences are respected by page
+animations and chapter scrolling; video only plays on a user action.
+
+`src/lib/walkthrough.json` is the shared storyboard and timing source for the
+renderer, player, captions and tests. Website media use `public/videos/caspy-showcase*`
+with a new cache version. Original `caspy-walkthrough*` media remain for older
+links. See [the animation guide](../docs/animated-walkthrough.md) to regenerate
+and verify the motion film and music-only soundtrack.
