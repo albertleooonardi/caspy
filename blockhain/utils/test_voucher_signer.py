@@ -84,6 +84,19 @@ class TestVoucherSigner:
         assert is_valid is True
         assert recovered.lower() == signer.account.address.lower()
 
+    def test_invalid_tier(self, signer):
+        """Test that invalid tier raises error."""
+        deadline = int((datetime.now() + timedelta(hours=24)).timestamp())
+
+        with pytest.raises(ValueError, match="Invalid tier"):
+            signer.create_voucher(
+                to=RECIPIENT,
+                tier=99,
+                session_id=SESSION_ID,
+                nonce=1,
+                deadline=deadline,
+            )
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

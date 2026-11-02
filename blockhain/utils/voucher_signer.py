@@ -181,10 +181,7 @@ class VoucherSigner:
 
 
 def main():
-    """Example CLI for creating vouchers."""
-    import argparse
-    from datetime import datetime, timedelta
-
+    """CLI for creating vouchers."""
     parser = argparse.ArgumentParser(description="Sign EIP-712 vouchers for Caspy NFT minting")
     parser.add_argument("--private-key", required=True, help="Hex-encoded signer private key")
     parser.add_argument("--contract", required=True, help="Hex-encoded contract address")
@@ -211,7 +208,6 @@ def main():
         print(f"\nCreating voucher...")
         print(f"  Recipient: {args.recipient}")
         print(f"  Tier: {'Treat' if args.tier == 0 else 'Trick'}")
-        print(f"  Session ID: {args.session_id}")
 
         result = signer.create_voucher(
             to=args.recipient,
@@ -238,7 +234,6 @@ def main():
 
     except Exception as e:
         print(f"Error: {e}")
-        import sys
         sys.exit(1)
 
 
