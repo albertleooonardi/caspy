@@ -58,12 +58,39 @@ caspy/
 
 ### Frontend (Astro)
 
+For the **local heist with live AI through Bifrost**, run from the project root:
+
+```bash
+bash run-heist.sh
+```
+
+Open <http://localhost:4321/play> and choose **Start an AI heist**. This starts
+Bifrost (or reuses it on port 8080), the Python game API on port 8000, and Astro
+on port 4321. It finds Node/npm installed with nvm even in an IDE shell. The root
+`.env` must already pass `python3 scripts/bifrost_setup.py check`; see the gateway
+setup below for first-time configuration. Stop another frontend on port 4321
+before using the launcher. Ctrl+C stops the services it started.
+
+This mode streams actual Caspy responses and calls an independent judge with
+the existing actor/judge virtual keys and routes. There are three attempts per
+heist, with no wallet or NFT minting. Sessions are held in memory for up to six
+hours, reset on API restart, and can be replayed after completion. Prompts go to
+the configured AI provider, and Bifrost may retain request logs. This is a local
+playground, not the production wallet/session/mint backend.
+
+For only the scripted frontend demo:
+
 ```bash
 cd frontend
 cp .env.example .env   # fill in values
 npm install
 npm run dev
 ```
+
+Set `PUBLIC_LOCAL_AI=false` and leave `PUBLIC_API_URL` empty in `frontend/.env`
+for scripted demo mode. To run the AI services separately, start
+`bash run-bifrost.sh`, `python3 scripts/heist_api.py`, and (in `frontend/`)
+`PUBLIC_LOCAL_AI=true npm run dev -- --host 127.0.0.1` in three terminals.
 
 ### LLM gateway (Bifrost)
 

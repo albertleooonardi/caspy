@@ -2,7 +2,9 @@ export type GameStatus = 'active' | 'won' | 'lost' | 'pending_review' | 'void';
 export type Message = { role: 'user' | 'caspy'; text: string };
 export type Session = { id: string; status: GameStatus; attempts_remaining: number; messages: Message[]; minted?: boolean; tx_hash?: string; tier?: 'treat' | 'trick' };
 export type TurnResult = { attempts_remaining: number; status: GameStatus; reply?: string };
-export const API_URL = (import.meta.env?.PUBLIC_API_URL || '').replace(/\/$/, '');
+export const IS_LOCAL_AI = import.meta.env?.PUBLIC_LOCAL_AI === 'true';
+export const API_URL = (IS_LOCAL_AI ? '/api' : import.meta.env?.PUBLIC_API_URL || '').replace(/\/$/, '');
+export const LIVE_SESSION_KEY = IS_LOCAL_AI ? 'caspy.local-ai.session' : 'caspy.live.session';
 export const IS_DEMO = !API_URL;
 const SESSION_KEY = 'caspy.demo.session.v1';
 

@@ -23,6 +23,15 @@ Open http://localhost:4321. `npm run build` outputs the static site to `dist/`; 
 
 ## Demo mode
 
+For actual AI responses through the local Bifrost gateway, run `bash run-heist.sh`
+from the repository root. Or run `python3 scripts/heist_api.py` from the root
+alongside Bifrost, set `PUBLIC_LOCAL_AI=true` in `frontend/.env`, and restart
+`npm run dev`. The same-origin `/api` development proxy connects to port 8000.
+Local AI mode skips wallet authentication and disables all claims. It stores
+sessions in API memory for up to six hours; the provider receives your prompts
+and Bifrost can retain logs. Use the dev server, since the static build/preview
+does not provide this development proxy. Unset the flag for the modes below.
+
 No configuration is required. Without `PUBLIC_API_URL`, the app uses a **scripted, browser-local demo**. Start a demo heist and send three prompts. Select Treat or Trick before the first prompt to preview either outcome. Claiming is simulated: no signatures, transactions, NFTs, live AI, or actual wallet connection occur. Reloading restores the demo session. Use Privacy → Clear my demo data to remove it.
 
 The supplied `logo-transparent.png` is copied to `public/images/logo-transparent.png` and used in the header, footer, hero, game, and Treat result. The existing `logo.jpg` is used for the collectible preview and sharing metadata. Originals outside this directory are untouched.

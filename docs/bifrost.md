@@ -2,8 +2,10 @@
 
 Bifrost is the third-party gateway in the ignored `bifrost/` clone. Caspy's
 configuration and tooling live in the root repository so a fresh checkout can
-reproduce the setup without changing upstream code. The frontend still runs its
-demo flow until the FastAPI game API is implemented.
+reproduce the setup without changing upstream code. The frontend supports a
+local AI playground through `scripts/heist_api.py`. Run `bash run-heist.sh`
+from the root and open <http://localhost:4321/play>. The production FastAPI
+game API, wallet authentication, and minting integration remain unimplemented.
 
 ## Local setup
 
