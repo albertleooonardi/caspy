@@ -1,0 +1,17 @@
+{
+  "name": "Caspy's Trick #1",
+  "description": "A common Trick NFT awarded when you exhaust all 3 attempts without outsmarting Caspy. Better luck next season!",
+  "image": "ipfs://QmXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX/trick/1.png",
+  "animation_url": "ipfs://QmXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX/trick/1.mp4",
+  "external_url": "https://caspy.dev",
+  "attributes": [
+    {
+      "trait_type": "Tier",
+      "value": "Trick"
+    },
+    {
+      "trait_type": "Rarity",
+      "value": "Common"
+    }
+  ]
+}

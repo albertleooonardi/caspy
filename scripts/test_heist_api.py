@@ -1,4 +1,6 @@
 import unittest
+import tempfile
+from pathlib import Path
 
 from heist_api import Games
 
@@ -58,12 +60,23 @@ class GamesTest(unittest.TestCase):
         self.assertEqual(gateway.calls, 1)
 
     def test_failures_and_refunds(self):
-        for failure, remaining, status in [('actor', 3, 'active'), ('partial', 2, 'void'), ('judge', 2, 'void')]:
+        for failure, remaining, status in [('actor', 3, 'active'), ('partial', 2, 'void')]:
             games, _, ident = self.setup_game(failure=failure)
             with self.assertRaisesRegex(RuntimeError, 'Caspy|judge'):
                 games.turn(ident, 'owner', 'Pitch', '1', lambda _: None)
             data = games.owned(ident, 'owner')['data']
             self.assertEqual((data['attempts_remaining'], data['status']), (remaining, status))
+
+    def test_judge_failure_can_be_retried_without_spending_another_attempt(self):
+        games, gateway, ident = self.setup_game(failure='judge', verdict='YIELD')
+        result = games.turn(ident, 'owner', 'Pitch', '1', lambda _: None)
+        self.assertEqual(result['status'], 'pending_review')
+        self.assertEqual(result['attempts_remaining'], 2)
+        gateway.failure = None
+        result = games.review(ident, 'owner')
+        self.assertEqual(result['status'], 'won')
+        self.assertEqual(result['attempts_remaining'], 2)
+        self.assertEqual(gateway.calls, 1)
 
     def test_concurrent_turn_rejected_before_spending(self):
         games, gateway, ident = self.setup_game()
@@ -78,6 +91,32 @@ class GamesTest(unittest.TestCase):
         games.sessions[ident]['created'] -= 21601
         with self.assertRaises(LookupError):
             games.owned(ident, 'owner')
+
+    def test_persistent_sessions_do_not_expire_or_reset_on_restart(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = Path(folder) / 'games.json'
+            games = Games(FakeGateway(verdict='YIELD'), store)
+            ident = games.create('wallet:owner')['id']
+            games.turn(ident, 'wallet:owner', 'Pitch', '1', lambda _: None)
+            games.sessions[ident]['created'] -= 21601
+            games.persist()
+            restored = Games(FakeGateway(), store)
+            restored.prune()
+            self.assertEqual(restored.create('wallet:owner')['id'], ident)
+            self.assertEqual(restored.owned(ident, 'wallet:owner')['data']['status'], 'won')
+
+    def test_restart_during_judging_preserves_review_without_an_extra_attempt(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = Path(folder) / 'games.json'
+            games = Games(FakeGateway(failure='judge'), store)
+            ident = games.create('wallet:owner')['id']
+            games.turn(ident, 'wallet:owner', 'Pitch', '1', lambda _: None)
+            games.sessions[ident]['in_flight'] = 'judge'
+            games.persist()
+            restored = Games(FakeGateway(verdict='YIELD'), store)
+            self.assertEqual(restored.owned(ident, 'wallet:owner')['data']['status'], 'pending_review')
+            result = restored.review(ident, 'wallet:owner')
+            self.assertEqual((result['status'], result['attempts_remaining']), ('won', 2))
 
 
 if __name__ == '__main__':

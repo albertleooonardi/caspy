@@ -58,6 +58,18 @@ caspy/
 
 ### Frontend (Astro)
 
+For **live Caspy gameplay with local NFT minting**, run:
+
+```bash
+bash run-heist.sh --nft
+```
+
+Open <http://localhost:4321/play>, connect the local test wallet, play your heist,
+then claim your Treat or Trick on Anvil (chain 31337). The launcher builds and
+deploys the NFT contract and connects wallet sign-in, server vouchers and mint
+confirmation. No real funds or private keys are required. See the
+[local NFT guide](docs/nft-local.md) for setup, persistence and verification.
+
 For the **local heist with live AI through Bifrost**, run from the project root:
 
 ```bash
@@ -109,8 +121,10 @@ for credentials, smoke tests, configuration updates, and current integration gap
 
 ```bash
 cd blockhain
-forge build
-forge test
+npm ci
+# forge-std is installed automatically by the root NFT launcher.
+npm run build
+npm test
 ```
 
 ## Security model

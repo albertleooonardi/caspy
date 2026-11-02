@@ -1,0 +1,4 @@
+# Optional standalone Python voucher utility and its tests.
+# The local Caspy API uses viem and unlocked Anvil test accounts instead.
+eth-account==0.13.7
+pytest==8.4.2

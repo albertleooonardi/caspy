@@ -23,6 +23,13 @@ Open http://localhost:4321. `npm run build` outputs the static site to `dist/`; 
 
 ## Demo mode
 
+For the full **local NFT game**, run `bash run-heist.sh --nft` from the root.
+Connect the local test wallet, play against the Bifrost actor/judge, then mint
+the server-confirmed result on Anvil (31337). The launcher provides
+`PUBLIC_NFT_ENABLED=true`, `PUBLIC_CONTRACT_ADDRESS` and `PUBLIC_NFT_SEASON` to
+Astro. No browser extension or private key is needed. See
+[the local NFT guide](../docs/nft-local.md).
+
 For actual AI responses through the local Bifrost gateway, run `bash run-heist.sh`
 from the repository root. Or run `python3 scripts/heist_api.py` from the root
 alongside Bifrost, set `PUBLIC_LOCAL_AI=true` in `frontend/.env`, and restart
@@ -52,7 +59,13 @@ Expected payloads:
 - `POST /game/voucher` receives `{session_id}`, returns the signed voucher defined in `src/lib/wallet.ts`.
 - `GET /mint/status/{id}` returns `{status, tx_hash?, minted?}`. Status `confirmed` completes the claim; `failed` permits retry.
 
-`wallet.ts` provides injected browser-wallet sign-in through SIWE, Base network switching, and a voucher claim adapter. **Validate the tuple fields and Solidity types against the final deployed contract ABI before enabling live claims**; the PRD doesn't supply an audited ABI. The configured contract address and connected recipient are checked before requesting a transaction. Only server-confirmed session outcomes expose a claim.
+`wallet.ts` supports SIWE and the contract's six-argument `mintWithVoucher`
+function using the shared ABI in `src/lib/contract.ts`. Local NFT mode uses
+Anvil's unlocked third test account; the existing external-backend mode uses
+an injected wallet on Base. The configured chain, contract, recipient, tier
+and expiry are checked and the mint is simulated before submission. Only
+server-confirmed session outcomes expose a claim. Local confirmation checks
+the contract event and displays the token ID, with no Base explorer link.
 
 Not implemented in this frontend-only scope: FastAPI/Postgres/Redis, AI actor and judge, on-chain contract deployment, indexing, Turnstile, WalletConnect mobile QR/deep links, ERC-1271 backend verification, ENS resolution, real season/supply data, server-generated OG cards, or finalized live legal/operator details. The UI documents browser-wallet support without claiming those integrations exist.
 
