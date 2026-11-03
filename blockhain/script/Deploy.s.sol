@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Script} from "forge-std/Script.sol";
+import {console2} from "forge-std/console2.sol";
 import {CaspyHeist} from "../src/CaspyHeist.sol";
 
 /// @notice Deploy script for CaspyHeist contract
@@ -34,12 +35,12 @@ contract DeployScript is Script {
         vm.stopBroadcast();
 
         // Print deployment info
-        emit log_named_address("CaspyHeist deployed at:", address(contract_));
-        emit log_named_address("Owner (Deployer):", deployer);
-        emit log_named_address("Signer:", signer);
-        emit log_named_string("Name:", NAME);
-        emit log_named_string("Symbol:", SYMBOL);
-        emit log_named_uint("Treat Supply:", TREAT_SUPPLY);
-        emit log_named_string("Base URI:", BASE_URI);
+        console2.log("CaspyHeist deployed at:", address(contract_));
+        console2.log("Owner (Deployer):", deployer);
+        console2.log("Signer:", signer);
+        console2.log("Name:", NAME);
+        console2.log("Symbol:", SYMBOL);
+        console2.log("Treat Supply:", TREAT_SUPPLY);
+        console2.log("Base URI:", BASE_URI);
     }
 }

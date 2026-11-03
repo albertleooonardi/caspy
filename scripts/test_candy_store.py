@@ -76,6 +76,20 @@ class CandyTests(unittest.TestCase):
         self.assertEqual(self.candy.public(self.candy.row('one'))['state'],'needs_configuration')
         with self.assertRaises(Fault): self.candy.generate('one',self.user,True)
         self.assertEqual(self.renderer.calls,0)
+
+    def test_billing_failure_preserves_grade_and_creates_no_artwork(self):
+        assessment=self.earn()['assessment']
+        with patch.object(self.renderer,'render',side_effect=RuntimeError('billing')) as render:
+            self.candy.generate('one',self.user,True)
+            self.candy.pool.shutdown(wait=True)
+            render.assert_called_once()
+        row=self.candy.row('one')
+        self.assertEqual(row['state'],'failed')
+        self.assertIn('provider credits or billing',row['error'])
+        self.assertEqual(json.loads(row['assessment']),assessment)
+        self.assertEqual(row['attempts'],1)
+        self.assertIsNone(row['image_hash'])
+        self.assertIsNone(row['metadata_hash'])
     def test_interruption_explicit_retry_and_budget(self):
         self.earn()
         with self.platform.db() as db: db.execute("UPDATE candy_jobs SET state='uncertain' WHERE id='one'")

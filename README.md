@@ -158,13 +158,23 @@ NFTs have no promised financial value. This is a free-to-play, skill-based game;
 ### Prompt-generated candy NFTs
 
 Run the full local stack with `bash run-heist.sh`. Winning prompts now earn a
-recorded C/B/A/S grade and one FLUX.1-dev candy; losses receive no NFT. Visit
+recorded C/B/A/S grade and one FLUX-generated candy; losses receive no NFT. Visit
 `/result` to generate and mint, `/collection` to manage prompt access/listing, and
 `/marketplace` to trade with local test ETH. The launcher deploys the v2 candy
 contract and marketplace while preserving older deployment state.
 
-Add server-side `HF_TOKEN` to root `.env` when ready, with Inference Providers
-permission and provider credits. Install image dependencies using
-`.venv/bin/python -m pip install -r scripts/requirements-candy.txt`. No generated
-reward image is available until a winner explicitly requests hosted generation.
-See [candy setup and limits](docs/candy.md) and PRD section 21.
+Local FLUX.1-schnell is the default. Run `bash setup-flux.sh` once for the local
+runtime and quantized weights; no inference credits are required. Optional hosted
+FLUX.1-dev requires explicit `CASPY_IMAGE_BACKEND=hf-dev`, server-side HF_TOKEN
+and provider credits. Neither backend generates a reward before an eligible win.
+See [candy setup and limits](docs/candy.md), [local QA](docs/qa-local-schnell.md)
+and PRD section 21.
+
+### No-credit local image generation
+
+The workspace now selects `CASPY_IMAGE_BACKEND=local-schnell`. Run
+`bash setup-flux.sh` once to install MFLUX and download the ~9 GiB quantized
+Schnell checkpoint, then `bash run-heist.sh`. Winning prompts inspire candy
+characters in Caspy’s illustrated style. Losing heists receive nothing.
+The 8 GB M3 uses 512×512, four steps, low-memory mode and a single generation
+worker. No paid fallback is made; completion depends on available memory.

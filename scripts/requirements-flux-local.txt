@@ -1,0 +1,2 @@
+# Isolated Apple Silicon runtime, Python >=3.11. Do not install in the game API venv.
+mflux==0.24.0

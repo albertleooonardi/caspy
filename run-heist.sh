@@ -100,7 +100,8 @@ if [ "$NFT_MODE" = true ]; then
 import sys
 sys.path.insert(0, 'scripts')
 from bifrost_setup import environment, ROOT
-raise SystemExit(0 if environment(ROOT).get('HF_TOKEN') else 1)
+env=environment(ROOT)
+raise SystemExit(0 if env.get('CASPY_IMAGE_BACKEND','local-schnell')=='hf-dev' and env.get('HF_TOKEN') else 1)
 PY
   then
     [ -x .venv/bin/python ] || python3 -m venv .venv
@@ -108,6 +109,7 @@ PY
       .venv/bin/python -m pip install -r scripts/requirements-candy.txt
     fi
   fi
+  if [ ! -f data/flux/ready.json ]; then echo 'Local candy images need one-time setup: bash setup-flux.sh (unless using hf-dev).'; fi
   echo 'Preparing local blockchain and NFT contract...'
   if [ ! -x blockhain/node_modules/.bin/anvil ] || [ ! -x blockhain/node_modules/.bin/forge ]; then (cd blockhain && npm ci); fi
   if [ ! -f blockhain/lib/forge-std/src/Test.sol ]; then

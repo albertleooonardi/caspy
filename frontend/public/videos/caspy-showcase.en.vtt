@@ -3,8 +3,8 @@ WEBVTT
 1
 00:00:00.000 --> 00:00:08.000
 [Halloween music and wordless ghost choir; no spoken narration]
-Meet Caspy. Persuade Caspy to share his candy. Your words are the only tools you need.
-An illustrated guide to the local app. Examples are not guaranteed wins.
+Meet Caspy. You have up to three prompts to convince Caspy to share. Win him over to earn a candy NFT inspired by your words.
+Illustrated gameplay, not a recorded win. Candy rewards require NFT mode and a confirmed result.
 
 2
 00:00:08.000 --> 00:00:18.000
@@ -12,42 +12,42 @@ Join the haunt. Register with your name, email and a password of at least 12 cha
 Choose Play & contribute, or Evaluate AI to create a research workspace.
 
 3
-00:00:18.000 --> 00:00:30.000
+00:00:18.000 --> 00:00:26.000
 Choose what to share. Choose a named campaign only if you want to contribute. Research and commercial licensing have separate permissions.
 Both boxes start unchecked. Consent never changes your attempts, outcome or NFT eligibility.
 
 4
-00:00:30.000 --> 00:00:42.000
-Write your pitch. Write up to 500 characters. Send with Enter or the arrow. Shift + Enter adds a new line.
-Make a specific, playful pitch. Never include private or confidential information.
+00:00:26.000 --> 00:00:38.000
+Write your pitch. Offer a story, a clever trade or a heartfelt reason. Stay in Caspy’s world; each prompt can use up to 500 characters.
+Example: “One candy for our moonbeam-cookie party? I’ll save a seat for every lonely ghost.”
 
 5
-00:00:42.000 --> 00:00:52.000
-Make three count. Wait for Caspy’s reply before your next prompt. The candy counter shows how many chances remain.
-A heist can finish early if you win. Repeating a demand is not a magic shortcut.
+00:00:38.000 --> 00:00:48.000
+Make three count. Send a prompt, read Caspy’s reply, then adapt your next reason. You have at most three chances; a confirmed win ends the heist early.
+Enter or the arrow sends. Shift + Enter adds a line. Demands and rule overrides do not earn candy.
 
 6
-00:00:52.000 --> 00:01:02.000
-Trust the result. A separate judge checks the pitch and response. Caspy’s friendly words alone never authorize a win or mint.
-If judging is unavailable, choose Check judge again. The saved reply is reviewed without another attempt.
+00:00:48.000 --> 00:00:58.000
+Trust the result. A separate AI judge evaluates your persuasion and Caspy’s response. The server checks the verdict before confirming your result.
+A friendly reply is not a win. If evaluation is pending, check the judge again without spending another prompt.
 
 7
-00:01:02.000 --> 00:01:12.000
-Earn your candy. Only a confirmed win earns candy. Creativity, coherence, specificity and measured novelty determine grade C, B, A or S.
-No win means no candy or NFT. Grades are recorded before image generation; no random rarity draws.
+00:00:58.000 --> 00:01:12.000
+Earn your candy. Confirmed win: earn a candy graded C, B, A or S. Creativity, coherence, specificity and measured novelty shape your score.
+No confirmed win means no candy, no generated reward image and no NFT. Grades are earned, not random draws.
 
 8
-00:01:12.000 --> 00:01:22.000
-Generate, mint, collect. In NFT mode, authorize FLUX to create your winning candy. Mint it, then open Collection to list the NFT with source-prompt access.
-Local test ETH only. Buyers unlock the redacted prompt after purchase. Research consent is separate.
+00:01:12.000 --> 00:01:26.000
+Your prompt becomes candy. Approve image generation after winning. FLUX.1-schnell turns your redacted prompt into candy artwork: flavors, colors and wrapper details.
+Then mint with local test ETH. Supply is capped at 1,000; generation can take several minutes. Preview artwork is illustrative.
 
 9
-00:01:22.000 --> 00:01:34.000
-Beyond the heist. Researchers publish campaigns, review redacted examples, add human labels and inspect scoped metrics. Licensed datasets need separate commercial consent.
-Withdraw future research use in Account. Downloaded copies cannot be recalled. Redaction does not guarantee anonymity.
+00:01:26.000 --> 00:01:34.000
+Collect, trade, contribute. Open Collection to view your NFT. Review its prompt license, set a fixed test-ETH price and list it. Buyers unlock source-prompt access.
+Research sharing is separate and optional. Selling an NFT does not automatically license a research dataset.
 
 10
 00:01:34.000 --> 00:01:40.000
-Your turn. Create an account. Choose your path. Give Caspy a reason to share.
-No narration. Original Halloween music and wordless ghost choir only.
+Your turn. Sign in. Connect a local test wallet in NFT mode. Give Caspy a reason to share.
+Play with words. Earn through persuasion. Halloween music and wordless choir; no narration.
 

@@ -1,6 +1,6 @@
 // Render Caspy's kinetic typography walkthrough. Native vector animation,
 // illustrative UI, and a supplied original music/wordless-choir WAV; no narration.
-// Usage: executable storyboard.json character.png soundtrack.wav output-dir [--stills]
+// Usage: executable storyboard.json character.png soundtrack.wav output-dir [--candy image.png] [--stills]
 import AppKit
 import AVFoundation
 import ImageIO
@@ -78,6 +78,12 @@ func trim(_ image:CGImage)->CGImage {
     return image.cropping(to:CGRect(x:max(0,l-6),y:max(0,top-6),width:min(w-l,rr-l+13),height:min(h-top,b-top+13))) ?? image
 }
 let character=trim(CGImageSourceCreateImageAtIndex(CGImageSourceCreateWithURL(URL(fileURLWithPath:args[2]) as CFURL,nil)!,0,nil)!)
+let candyArtwork: CGImage? = {
+    guard let index=args.firstIndex(of:"--candy"), index+1<args.count else { return nil }
+    guard let source=CGImageSourceCreateWithURL(URL(fileURLWithPath:args[index+1]) as CFURL,nil),
+          let image=CGImageSourceCreateImageAtIndex(source,0,nil) else { fatalError("Candy preview cannot be decoded") }
+    return image
+}()
 func caspy(_ c:CGContext,_ x:CGFloat,_ y:CGFloat,_ width:CGFloat,_ height:CGFloat,_ t:Double) {
     let scale=min(width/CGFloat(character.width),height/CGFloat(character.height));let bob=CGFloat(sin(t*1.65))*13
     c.saveGState();c.translateBy(x:x+width/2,y:H-y-height/2+bob);c.rotate(by:CGFloat(sin(t*0.85))*0.035);c.setShadow(offset:CGSize(width:0,height:-12),blur:35,color:cg(ink,0.25));c.draw(character,in:CGRect(x:-CGFloat(character.width)*scale/2,y:-CGFloat(character.height)*scale/2,width:CGFloat(character.width)*scale,height:CGFloat(character.height)*scale));c.restoreGState()
@@ -118,7 +124,7 @@ func scene(_ c:CGContext,_ index:Int,_ t:Double) {
         c.setFillColor(cg(purple,0.45));c.fillEllipse(in:r(1080,180,390,390));stroke(c,r(1030,135,480,480),lilac,1,235,0.22)
         pop(c,r(1050,160,450,450),t,0.2) { caspy(c,1075,160,415,440,t) }
         if s.id=="welcome" {
-            for (i,title) in ["3 PROMPTS","1 GUARDIAN","YOUR CHOICE"].enumerated() { pop(c,r(CGFloat(78+i*252),465,232,43),t,1.2+Double(i)*0.15) { pill(c,title,CGFloat(78+i*252),465,232,dark,lilac) } }
+            for (i,title) in ["3 PROMPTS","WIN THE CANDY","NO LUCK DRAWS"].enumerated() { pop(c,r(CGFloat(78+i*252),465,232,43),t,1.2+Double(i)*0.15) { pill(c,title,CGFloat(78+i*252),465,232,dark,lilac) } }
         } else { pop(c,r(80,469,600,62),t,0.9) { box(c,r(80,469,590,62),orange,14);txt(c,"REGISTER  →  PLAY  →  EXPLORE",104,489,22,550,35,ink,.bold) } }
     case "account":
         headline(c,s.headline,t,75,208,76,740);caspy(c,390,396,190,200,t)
@@ -159,15 +165,22 @@ func scene(_ c:CGContext,_ index:Int,_ t:Double) {
         headline(c,s.headline,t,75,197,73,1400)
         for i in 0..<2 {
             let x=CGFloat(80+i*743), float=CGFloat(sin(t*1.6+Double(i)))*6
-            pop(c,r(x,402,710,183),t,0.8+Double(i)*0.3) { box(c,r(x,402+float,710,183),i==0 ? orange:lavender,23);txt(c,i==0 ? "EARN CANDY":"NO CANDY",x+30,426+float,46,600,75,ink,.heavy);txt(c,i==0 ? "C / B / A / S — scored, never drawn.":"No win. No image. No NFT.",x+33,520+float,24,640,45,ink,.medium);if i==0 { candy(c,x+620,466+float,40,t,ink) } }
+            pop(c,r(x,402,710,183),t,0.8+Double(i)*0.3) { box(c,r(x,402+float,710,183),i==0 ? orange:lavender,23);txt(c,i==0 ? "WIN → CANDY":"LOSS → NO CANDY",x+30,426+float,43,650,75,ink,.heavy);txt(c,i==0 ? "C / B / A / S — scored, never drawn.":"No reward image. No NFT.",x+33,520+float,24,640,45,ink,.medium) }
         }
     case "mint":
-        headline(c,s.headline,t,75,201,76,800);caspy(c,1095,192,355,390,t)
-        let items=["WIN → AUTHORIZE FLUX ARTWORK","MINT YOUR EARNED CANDY","COLLECTION → LICENSE & LIST"]
-        for (i,title) in items.enumerated() { pop(c,r(78,CGFloat(430+i*50),980,39),t,0.9+Double(i)*0.35) { txt(c,"0\(i+1)  \(title)",78,CGFloat(430+i*50),21,980,37,i==2 && t>4 ? green:cream,.semibold) } }
+        headline(c,s.headline,t,75,201,76,880)
+        pop(c,r(1110,195,380,410),t,1.1) {
+            let bob=CGFloat(sin(t*1.6))*7
+            box(c,r(1110,195+bob,380,370),lavender,24)
+            if let art=candyArtwork { c.saveGState();c.addPath(CGPath(roundedRect:r(1120,205+bob,360,350),cornerWidth:18,cornerHeight:18,transform:nil));c.clip();c.draw(art,in:r(1120,200+bob,360,360));c.restoreGState() }
+            else { candy(c,1300,380+bob,120,t) }
+            txt(c,"ILLUSTRATIVE CANDY · NOT A MINT",1110,579,14,380,28,lilac,.semibold,.center)
+        }
+        let items=["01  WIN → APPROVE FLUX ARTWORK","02  YOUR PROMPT → FLAVOR, COLOR, WRAPPER","03  MINT → OPEN YOUR COLLECTION"]
+        for (i,title) in items.enumerated() { pop(c,r(78,CGFloat(430+i*50),980,39),t,0.9+Double(i)*0.65) { txt(c,title,78,CGFloat(430+i*50),21,980,37,i==2 && t>4 ? green:cream,.semibold) } }
     case "research":
         headline(c,s.headline,t,75,198,74,1400)
-        for (i,title) in ["PUBLISH A CAMPAIGN","REVIEW & LABEL","INSPECT & LICENSE"].enumerated() {
+        for (i,title) in ["COLLECT YOUR CANDY","LICENSE & LIST","BUYER UNLOCKS PROMPT"].enumerated() {
             let x=CGFloat(80+i*486)
             pop(c,r(x,409,452,175),t,0.8+Double(i)*0.3) { box(c,r(x,409,452,175),dark,22);txt(c,"0\(i+1)",x+24,428,42,110,65,orange,.heavy);txt(c,title,x+25,518,22,405,45,cream,.bold) }
         }

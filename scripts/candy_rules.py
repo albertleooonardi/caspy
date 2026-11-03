@@ -5,7 +5,7 @@ import re
 import unicodedata
 from bifrost_setup import VERDICT_SCHEMA, validate_verdict
 
-MODEL = 'black-forest-labs/FLUX.1-dev'
+MODEL = 'black-forest-labs/FLUX.1-schnell'
 RULE_VERSION = 'candy-quality-novelty-v1'
 SCORE_FIELDS = ('creativity','coherence','specificity')
 CANDY_VERDICT_SCHEMA = copy.deepcopy(VERDICT_SCHEMA)

@@ -1,4 +1,4 @@
-# Caspy interactive field guide — edition 02
+# Caspy interactive field guide — edition 04
 
 The current film is **100 seconds, 1600×900, 30 fps, H.264 video + stereo AAC**.
 It uses large kinetic typography, masked line reveals, spring entrances, sliding
@@ -21,17 +21,17 @@ renderer, audio timing, chapter UI and tests. The film covers:
 | --- | --- | --- |
 | 0:00 | 8 s | Meet Caspy |
 | 0:08 | 10 s | Join the haunt: accounts and sign-in |
-| 0:18 | 12 s | Choose what to share: research and commercial consent |
-| 0:30 | 12 s | Write your pitch: 500 characters and keyboard controls |
-| 0:42 | 10 s | Make three count: waiting, counters and adapting |
-| 0:52 | 10 s | Trust the result: actor, judge and server |
-| 1:02 | 10 s | Trick or Treat: confirmed game outcomes |
-| 1:12 | 10 s | Claim locally: test wallet, Anvil and token confirmation |
-| 1:22 | 12 s | Beyond the heist: review, metrics, licensing and withdrawal |
+| 0:18 | 8 s | Choose what to share: research and commercial consent |
+| 0:26 | 12 s | Write your pitch: 500 characters and keyboard controls |
+| 0:38 | 10 s | Make three count: waiting, counters and adapting |
+| 0:48 | 10 s | Trust the result: actor, judge and server |
+| 0:58 | 14 s | Earn your candy: confirmed wins and scored C/B/A/S grades |
+| 1:12 | 14 s | Your prompt becomes candy: FLUX.1-schnell, mint and collect |
+| 1:26 | 8 s | Collect, trade, contribute: licenses, listings and prompt access |
 | 1:34 | 6 s | Your turn |
 
 The current media use `frontend/public/videos/caspy-showcase*` and the cache tag
-`kinetic-halloween-v2`. Original `caspy-walkthrough*` files remain for older links;
+`kinetic-halloween-gameplay-v4`. Original `caspy-walkthrough*` files remain for older links;
 they are not used by the current film player.
 
 ## Interaction and accessibility
@@ -69,7 +69,8 @@ swiftc -suppress-warnings -module-cache-path /private/tmp/caspy-swift-module-cac
   frontend/src/lib/walkthrough.json \
   frontend/public/images/logo-transparent.png \
   data/tutorial-v2/soundtrack.wav \
-  /private/tmp/caspy-showcase-v2
+  /private/tmp/caspy-showcase-v2 \
+  --candy frontend/public/images/tutorial/candy-example.png
 ```
 
 Use `--stills` as a final argument to render only ten chapter previews, the poster,
@@ -113,3 +114,36 @@ real player data are used by the film generator.
 The v3 candy revision updates chapters 7–8 and the published film/captions for
 win-only graded FLUX candies and fixed-price NFT + prompt-access trading. The
 100-second timing, original Halloween score and no-narration format remain.
+
+## Gameplay revision (v4)
+
+The film explicitly follows three prompts → independent evaluation → confirmed
+win or loss → scored candy → approved local Schnell artwork → local-chain mint
+→ collection and optional marketplace listing. Losses produce no candy, reward
+image or NFT. Grades use creativity, coherence, specificity and measured novelty,
+not random rarity. The supply cap is 1,000, and generation may take several minutes.
+The mint chapter shows a real local Schnell QA candy sample, labeled illustrative
+and not a mint; it is not evidence of a successful player heist. The PNG is stored
+at `frontend/public/images/tutorial/candy-example.png` for reproducible rendering.
+
+The shared storyboard, captions, written player instructions and knowledge check
+were updated together. Existing Halloween music and wordless choir are retained;
+there is no voiceover. The film remains 100 seconds with more reading time for
+the reward and artwork chapters. Research remains optional and separate from
+NFT prompt licensing. The written Researcher guide retains the full research flow.
+
+### v4 verification
+
+The final encoded file passed `verify_caspy_showcase.swift`: 100 seconds,
+1600 × 900 at 30 fps, one H.264 video track and one AAC audio track,
+34,151,213 bytes. Decoded audio measured −20.51 dBFS RMS / −6.32 dBFS peak
+with zero clipped samples; decoded frames confirmed motion. The retained
+original Halloween score has no narration. Scene previews were checked for
+readable typography and unclipped candy/outcome panels. Frontend checking
+reported zero errors/warnings/hints, all seven tests passed, and the production
+build passed. Machine-readable media results: ignored
+`data/tutorial-v4/media-qa.json`.
+
+Safari smoke check: the guide loaded the v4 media URL, playback started, chapter
+08 sought to 1:12 with the new prompt-to-candy instructions, and pause stopped
+playback at 1:16. The updated player and captions are served by the existing app.

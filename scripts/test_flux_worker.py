@@ -5,12 +5,27 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 from PIL import Image
 import huggingface_hub
 import flux_worker
 
 class FluxAdapterTests(unittest.TestCase):
+    def test_provider_statuses_are_actionable_without_leaking_response(self):
+        for status,kind in [(401,'authentication'),(402,'billing'),(403,'permission'),(429,'rate_limit'),(500,'provider')]:
+            class ProviderError(Exception):
+                response=SimpleNamespace(status_code=status,text='private-provider-response')
+            class Client:
+                def __init__(self,**kwargs): pass
+                def text_to_image(self,*args,**kwargs): raise ProviderError('private-provider-response')
+            stream=io.StringIO()
+            with self.subTest(status=status),patch.dict(os.environ,{'HF_TOKEN':'test-only-dummy'}),patch.object(huggingface_hub,'InferenceClient',Client),patch('sys.stdin',io.StringIO(json.dumps({'prompt':'QA candy','seed':1,'output':'unused.png'}))),patch('sys.stdout',stream),self.assertRaises(SystemExit):
+                flux_worker.main()
+            self.assertEqual(json.loads(stream.getvalue()),{'ok':False,'kind':kind,'http_status':status})
+            self.assertNotIn('private-provider-response',stream.getvalue())
+            self.assertNotIn('test-only-dummy',stream.getvalue())
+
     def test_fixed_model_safe_settings_and_clean_output(self):
         calls={}
         class Client:

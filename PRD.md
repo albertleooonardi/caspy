@@ -3,7 +3,7 @@
 
 | Field   | Value                                |
 | ------- | ------------------------------------ |
-| Version | 1.2 (prompt-generated candy + local marketplace)               |
+| Version | 1.3 (local Schnell candy generation + marketplace)               |
 | Status  | Local MVP implemented; public-launch requirements remain         |
 | Date    | 2026-11-02                           |
 | Owner   | TBD                                  |
@@ -681,7 +681,32 @@ Quality components, comparison count, model/rubric provenance and rule version
 are recorded before generation, remain unchanged on retries, and appear in NFT
 metadata. Grades do not guarantee scarcity distributions or prices.
 
-### 21.2 Hosted generation and immutable commitments
+### 21.2 Local Schnell default and immutable commitments
+
+**Current default supersedes the hosted-only setup below:** local
+`black-forest-labs/FLUX.1-schnell` using MFLUX 0.24.0 on Apple Silicon, pinned
+4-bit checkpoint revision `df1dada0a0e25bb8df6e1f7e4664959bf9ab86ce` from
+`mflux-community/flux-1-schnell-mflux-q4`. One-time setup downloads about 9 GiB;
+per-image generation needs no inference credits. The default uses 512×512,
+four steps, low-memory mode, and one job at a time. On an 8 GB Mac this is an
+experimental resource-constrained backend; completion/performance is not assumed.
+Timeouts and memory failures preserve grades and do not issue mint vouchers.
+No failure silently calls a hosted paid provider.
+
+The candy is an illustrated character in Caspy’s Halloween art direction:
+rounded purple outlines, pastel lavender/cream shading, expressive little eyes,
+witch/pumpkin accents. Its theme comes from the redacted winning prompt. This
+version uses a style description; exact mascot consistency is not guaranteed.
+A poor pitch which fails the independent win checks gets no candy or NFT.
+The reward gate, quality rubric, cap and replay protections are unchanged.
+
+Local inference disables network model lookup and forwards no runtime credentials.
+Local images have no provider safety checker; metadata records that explicitly,
+as well as the actual model, revision, quantization, step count and style version.
+Only explicit `CASPY_IMAGE_BACKEND=hf-dev` uses the hosted service described below.
+Existing committed NFTs retain their original model provenance.
+
+### 21.2.1 Optional hosted generation
 
 The winner explicitly consents to sending their redacted winning prompt to
 Hugging Face Inference Providers (fal-ai, `black-forest-labs/FLUX.1-dev`). The

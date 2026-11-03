@@ -70,3 +70,6 @@ bifrost/
 # config.json and SQLite state are private runtime files and are NOT committed.
 /config.json
 /data/
+
+# Isolated Apple Silicon image-generation runtime
+.venv-flux/
