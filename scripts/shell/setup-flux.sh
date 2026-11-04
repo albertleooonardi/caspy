@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One-time local image runtime/model setup. No server or paid API is started.
 set -euo pipefail
-cd "$(dirname -- "${BASH_SOURCE[0]}")"
+cd "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 if [ "$(uname -s)" != Darwin ] || [ "$(uname -m)" != arm64 ]; then
   echo 'The local MLX backend requires an Apple Silicon Mac.' >&2; exit 1
 fi

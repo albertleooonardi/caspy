@@ -3,29 +3,31 @@
 
 | Field   | Value                                |
 | ------- | ------------------------------------ |
-| Version | 1.3 (local Schnell candy generation + marketplace)               |
+| Version | 1.5 (Supabase migration, unified launcher and website walkthrough)               |
 | Status  | Local MVP implemented; public-launch requirements remain         |
-| Date    | 2026-11-02                           |
+| Date    | 2026-11-04                           |
 | Owner   | TBD                                  |
 | Type    | AI evaluation platform with an optional NFT game |
 
 ---
 
-> **Current reward specification:** Section 21 supersedes earlier Treat/Trick, failure-mint, random-rarity and no-secondary-market requirements. Earlier production architecture remains a roadmap, not a claim about this local MVP.
+> **Checkpoint: 4 November 2026.** Sections 20–22 describe the implemented local MVP and its validation limits. There is no failure NFT or random rarity draw. Production requirements elsewhere (managed Postgres/Redis, KMS, edge protection, public networks, n8n, scale targets and audits) are roadmap items unless explicitly marked implemented. Section 22 is the authoritative status and operations summary.
 
 ## 1. Summary
 
-Caspy's Prompt Heist is a skill-based social-engineering game. Players chat with **Caspy**, a stubborn ghost guarding a candy basket. They get **3 prompts** to persuade him. Only a confirmed win earns a **prompt-generated candy NFT**. FLUX.1-dev creates its artwork from the redacted winning prompt. A recorded quality and novelty score assigns grade C, B, A or S. A loss earns no candy or NFT.
+Caspy's Prompt Heist is a skill-based social-engineering game. Players chat with **Caspy**, a stubborn ghost guarding a candy basket. They get **3 prompts** to persuade him. Only a confirmed win earns a **prompt-generated candy NFT**. Local FLUX.1-schnell creates its artwork from the redacted winning prompt; hosted FLUX.1-dev is an optional, explicitly configured alternative requiring provider credits. A recorded quality and novelty score assigns grade C, B, A or S. A loss earns no candy or NFT.
 
 Caspy also turns **explicitly consented** three-prompt heists into a crowdsourced persuasion-evaluation workflow for AI researchers. Contributors can play privately, permit a named research campaign, and separately permit commercial dataset licensing. Research workspaces inspect model provenance, review redacted prompt/response pairs, add human labels, and publish controlled-access dataset releases. Companies developing LLMs are potential customers; no customer relationship or endorsement is implied.
 
 Legitimate persuasion success is not automatically a safety failure. Human-reviewed policy attacks and task-specific judge agreement are separate metrics. Single-response human ratings can support evaluation and downstream feedback curation; this MVP does not produce pairwise preference data or train RLHF models. Section 20 specifies the new platform behavior and implemented scope.
 
-The product is, by design, an adversarial prompt-injection target with real on-chain consequences. The central engineering requirement: **the LLM may influence the outcome, but must never hold mint authority.** All value-bearing decisions pass through deterministic, auditable server-side code.
+The current application is a local persuasion-evaluation game with NFT transactions on Anvil chain 31337 using test ETH. It is not deployed to a public testnet or mainnet by the launcher. The central engineering requirement: **the LLM may influence the outcome, but must never hold mint authority.** All value-bearing decisions pass through deterministic, auditable server-side code.
 
 ## 2. Goals / Non-Goals
 
 ### Goals
+
+Latency, win-rate, cost and reproducibility figures below are product targets, not achieved benchmark results. The current local judge and image-generation limits are recorded in section 22.
 
 - G1: Delightful, in-character Caspy; median first response < 3 s (p95 < 6 s) via streaming.
 - G2: Win rate is tunable and observable (target band: 8-15% at launch, configurable).
@@ -38,7 +40,7 @@ The product is, by design, an adversarial prompt-injection target with real on-c
 
 ### Non-Goals (v1)
 
-- No automated fiat checkout, secondary-market features, or token (ERC-20) economy. The local MVP supports listed dataset prices and manual access approval, without charging buyers.
+- No automated fiat checkout, real-money marketplace settlement or token (ERC-20) economy. A fixed-price local NFT/prompt marketplace is implemented. Dataset licensing has listed prices and manual access approval, without charging buyers.
 - No multi-turn memory beyond the 3-attempt session.
 - No user-generated Caspy personas.
 - No custodial wallets.
@@ -51,20 +53,20 @@ The product is, by design, an adversarial prompt-injection target with real on-c
 | Casual player | Fun, quick, low gas      | Confusion on wallet/tx                  |
 | Prompt hacker | Break Caspy              | Finds judge bypass, leaks system prompt |
 | Sybil farmer  | Many wallets, many tries | Drains LLM budget / rare supply         |
-| Collector     | Rare Treat               | Supply integrity                        |
+| Collector     | Graded candy and its source prompt               | Supply integrity                        |
 | Operator      | Tune, monitor, respond   | Cost spikes, incidents                  |
 
 ## 4. Core Gameplay Loop
 
-1. Register or sign in to a Caspy account. In NFT mode, also connect a wallet and sign SIWE (EIP-4361) to prove wallet ownership. Optionally choose a research campaign and separate research/commercial permissions before starting.
-2. Server creates a `session` (one per wallet per season) with `attempts_remaining = 3`.
-3. Player submits a prompt. Server atomically decrements attempts **before** calling the LLM.
-4. Caspy responds (streamed). A separate judge returns a structured verdict.
-5. On `YIELD` verdict: session closes as `won`; server issues a signed mint voucher for **Treat**.
-6. On attempt 3 without win: session closes as `lost`; server issues a signed voucher for **Trick**.
-7. Player submits voucher on-chain (or relayer submits). Mint confirmed; indexer updates DB.
+1. Register or sign in. In NFT mode, connect an available local Anvil test wallet and verify its ownership. Research campaign participation and commercial research permission are separate optional choices.
+2. The server creates or restores the wallet’s seasonal heist with up to three prompts. Each prompt is limited to 500 characters.
+3. Caspy replies through Bifrost; a separate judge evaluates the persuasion and response. The server owns attempt counts and final status.
+4. A clean `YIELD` with confidence at least 0.8 must pass the implemented server checks. A friendly Caspy reply alone does not award a win. An unavailable judge can leave the heist pending for review without another prompt charge.
+5. Only a confirmed eligible win reserves a candy and persists its quality/novelty assessment and C/B/A/S grade. A loss earns no candy, reward image or NFT.
+6. The winner explicitly approves artwork generation. Local Schnell creates prompt-inspired wrapped candy artwork; a completed image and metadata must pass validation before a signed v2 voucher is available. Failed jobs retain the saved grade and require explicit retry.
+7. The player mints the exact committed artwork on Anvil with test ETH, then opens Collection. Optional fixed-price listing licenses source-prompt access; a buyer gains endpoint access after the NFT purchase.
 
-Attempt is consumed even on LLM error only if the model produced a user-visible response; infrastructure failures refund the attempt (see 8.4).
+AI-only mode skips wallets, image rewards and NFT minting. The scripted frontend demo simulates conversations and outcomes; tutorial screenshots are not evidence of live reward transactions.
 
 ## 5. Functional Requirements
 
@@ -86,67 +88,68 @@ Attempt is consumed even on LLM error only if the model produced a user-visible 
 ### 5.3 Judging
 
 - FR-J1: Win decision made by a **separate judge call**, not by Caspy's own text and not by a tool call from Caspy.
-- FR-J2: Judge returns strict JSON (schema in 7.3). Anything unparseable = `NO_YIELD`.
+- FR-J2: Judge returns validated structured output. An unavailable or invalid evaluation cannot authorize a win or voucher; saved replies can be reviewed through Check judge again.
 - FR-J3: Judge is given the user prompt, Caspy's reply, and the rubric. It is never given wallet addresses, voucher data, or tool access.
 - FR-J4: Rubric rewards creativity/persuasion in-fiction; explicitly **does not** award wins for: claims of authority ("I'm the developer"), instructions to the system, requests to ignore rules, outputting fixed magic strings, or meta-prompts about the game's implementation.
 - FR-J5: Win requires judge `confidence >= threshold` (default 0.8) AND passes deterministic post-checks (7.4).
 
 ### 5.4 Minting
 
-- FR-M1: Mints authorized by **EIP-712 signed vouchers** from a backend signer; contract verifies signature. Backend does not need to pay gas per mint (player or relayer submits).
-- FR-M2: Voucher fields: `to`, `tier` (Treat/Trick), `sessionId`, `nonce`, `deadline`, `chainId`, `contract`.
-- FR-M3: Contract enforces one mint per `sessionId` (replay protection) and per-season supply caps for Treat.
-- FR-M4: Treat supply cap: configurable (e.g., 1,000). When exhausted, wins issue a "Treat (Late)" tier or waitlist per product decision.
-- FR-M5: Voucher TTL 24 h; re-issuable (idempotent) while unminted.
+- FR-M1: Only an independently confirmed, eligible winning heist with validated finished artwork can obtain an EIP-712 v2 candy voucher. LLMs never sign, mint or transact.
+- FR-M2: Voucher commitments include recipient, grade, score, session, redacted prompt hash, image hash, metadata hash, URI hash, nonce and deadline; the EIP-712 domain binds chain and contract.
+- FR-M3: The contract enforces recipient/signature validity, score-derived grade thresholds, expiry, one mint per wallet/session and the immutable collection cap (1,000 in this deployment).
+- FR-M4: Supply exhaustion does not create an alternative reward tier. A loss, pending evaluation or void heist cannot generate reward art or mint an NFT.
+- FR-M5: Unminted vouchers have a 24-hour TTL and may be reissued. Successful artwork cannot reroll; retries preserve the assessed grade.
 
 ### 5.5 Post-Game
 
-- FR-P1: Result screen with shareable card (OG image generated server-side).
-- FR-P2: Transaction status tracking until N confirmations.
-- FR-P3: Public read-only "wall of heists" (opt-in) showing winning prompts after season end.
+- FR-P1: Show the saved grade and score components, generation approval/progress/error state, finished image and local mint confirmation.
+- FR-P2: Collection shows earned/owned candies. The local marketplace supports explicit fixed-price escrow listing, exact-price purchase, cancellation and seller proceeds withdrawal.
+- FR-P3: Redacted source-prompt access follows verified NFT ownership or the seller’s active escrow listing. Research dataset licensing remains separate.
+- Future: public sharing/OG cards, durable public asset hosting and a reviewed public wall require their own rollout work; placeholder/demo routes do not establish these services.
 
 ## 6. System Architecture
 
+### 6.1 Implemented local architecture
+
+```text
+./run.sh
+  ├── Astro + React frontend                 127.0.0.1:4321
+  │      └── /api proxy → Python game API    127.0.0.1:8000
+  ├── Bifrost gateway                        127.0.0.1:8080
+  │      └── actor + independent judge → configured external LLM providers
+  └── Anvil local blockchain (NFT mode)      127.0.0.1:8545 / chain 31337
+
+Game API → Supabase PostgreSQL / caspy (accounts, research, candy jobs)
+         → data/nft-games-*.json (persistent NFT heists)
+         → local Schnell worker → data/candy-assets/ (art + metadata)
+         → local signing/chain bridge → CaspyHeist + CaspyCandyMarket
+
+Optional hosted art: explicit hf-dev selection → Hugging Face provider
+n8n: placeholder only; no running workflow or event integration
 ```
-Browser (Astro + islands, wagmi/viem)
-   |  HTTPS + SSE
-   v
-Edge (Cloudflare/Vercel WAF, rate limit, Turnstile)
-   v
-API (FastAPI) ──> Postgres (Supabase) [sessions, attempts, logs, vouchers]
-   |                    ^
-   |                    | Realtime/webhooks
-   ├──> Redis (rate limits, locks, nonce cache)
-   ├──> LiteLLM gateway ──> Provider A (primary) / Provider B (fallback)
-   ├──> Signer service (KMS/HSM-backed key; signs vouchers only)
-   └──> Queue (job runner) ──> Indexer, Discord/n8n, OG image gen
-Chain (Base/Polygon/Arbitrum): ERC-721 Caspy contract
-Indexer (viem event watcher / Ponder / webhook) ──> DB
-```
 
-### 6.1 Trust Boundaries
+Bifrost is the live LLM gateway. Local image inference does not make actor/judge calls offline. The API is the Python standard-library loopback HTTP service, not FastAPI. The server requires Supabase PostgreSQL; startup checks connections and never falls back to SQLite. AI-only conversations are in memory and reset on API restart.
 
-1. **Untrusted:** user input, Caspy output (it is steered by user input), anything quoted from either.
-2. **Semi-trusted:** judge output (LLM; validated by schema + post-checks).
-3. **Trusted:** API server logic, DB constraints, signer, contract.
+### 6.2 Trust boundaries and current stack
 
-The signer service is reachable **only** from the API's `finalize_session` code path. No LLM tool/function ever receives a callable that signs, mints, or writes `won` to the DB.
+User prompts and Caspy output are untrusted. Judge output is validated and still subject to server checks. The server, storage constraints and contracts enforce reward eligibility and commitments. Local development signing is not a production KMS deployment.
 
-### 6.2 Tech Stack
+| Layer | Implemented checkpoint | Production target / limitation |
+| --- | --- | --- |
+| Frontend | Astro + React, SSE, viem wallet/chain bridge | Mobile/cross-browser and accessibility coverage remain incomplete |
+| API | Python standard-library HTTP service | Production ASGI/FastAPI migration and distributed operation are future work |
+| Identity/data | Supabase PostgreSQL, password hashing, server sessions, account/workspace scopes | Managed identity, account recovery/email verification and production storage remain future work |
+| LLM gateway | Bifrost actor and separate judge with configured routes | Provider availability and judge calibration remain material dependencies |
+| Images | Local quantized FLUX.1-schnell/MFLUX; optional hosted FLUX.1-dev | Local worker is slow/resource-sensitive; hosted generation needs credits |
+| Chain/contracts | Anvil 31337; v2 ERC-721 + fixed-price escrow market | No mainnet/public-testnet rollout or completed independent audit |
+| Signing | Local development signer and EIP-712 commitments | KMS/HSM custody, multisig and operational controls required before public launch |
+| Limits/concurrency | Local application checks, process locks and single image worker | Redis/distributed locks and scaled load validation are not implemented |
+| Automation | No n8n workflows | Optional off-chain notifications only; see section 22.5 |
 
+### 6.3 Production architecture roadmap
 
-| Layer         | Choice                                             | Notes                                                             |
-| ------------- | -------------------------------------------------- | ----------------------------------------------------------------- |
-| Frontend      | Astro + React/Solid islands                        | SSE chat island; wagmi + viem; RainbowKit/Reown                   |
-| API           | FastAPI (async)                                    | Pydantic v2 models for all LLM I/O                                |
-| LLM gateway   | BiFrost                                            | Primary + fallback, budgets, retries, per-key spend caps          |
-| DB            | Supabase Postgres                                  | RLS enabled; service-role key server-only                         |
-| Cache/limits  | Redis (Upstash)                                    | Sliding-window limits, distributed locks                          |
-| Signing       | Cloud KMS (AWS/GCP) secp256k1 or Safe-owned signer | Key never in app env                                              |
-| Chain         | Base (default)                                     | Cheap gas, wide wallet support; L2 choice final in Open Questions |
-| Contracts     | Solidity + Foundry, OpenZeppelin ERC-721 + EIP-712 |                                                                   |
-| Workflows     | n8n                                               | Off-chain notifications only; no authority                        |
-| Observability | OpenTelemetry, Langfuse/Helicone, Sentry, Grafana  |                                                                   |
+Managed Postgres/Supabase with RLS, Redis, edge/WAF and bot controls, KMS-backed signing, durable public metadata, queues/indexing, centralized telemetry and a chosen public chain remain planned. Earlier production algorithms, schemas, metric thresholds and rollout gates in sections 7–19 are design requirements where they differ from the current local implementation. They are not evidence that these services or controls are deployed.
 
 ## 7. Agent Design
 
@@ -234,14 +237,16 @@ Config (hot-reloadable, versioned): `WIN_THRESHOLD`, `rubric_version`, `caspy_pr
 | POST   | `/game/session`            | Create/fetch active session for wallet                                                       |
 | POST   | `/game/turn`               | Submit prompt; SSE stream of Caspy reply; final event contains`attempts_remaining`, `status` |
 | GET    | `/game/session/{id}`       | Session state                                                                                |
-| POST   | `/game/voucher`            | Fetch/reissue signed voucher for finished session                                            |
+| POST   | `/game/voucher`            | Fetch/reissue signed v2 voucher for eligible win with validated artwork                                            |
 | GET    | `/mint/status/{sessionId}` | On-chain status                                                                              |
-| GET    | `/health`, `/ready`        | Probes                                                                                       |
-| POST   | `/admin/*`                 | Config, review queue, pause switch (SSO + role-gated)                                        |
+| GET    | `/health`                 | Implemented local health probe; `/ready` remains a production target                                                                                       |
+| POST   | `/admin/*` (planned)       | Future production admin surface, not an implemented SSO API                                        |
 
 All endpoints require idempotency keys on mutating calls (`Idempotency-Key` header).
 
-### 8.2 Turn Handler Algorithm (authoritative)
+Additional local endpoints include `POST /game/review`, `POST /candy/generate`, `POST /mint/submit`, `GET /candy/config`, `GET /candy/collection`, `GET /candy/prompt/{token_id}`, `GET /market/listings` and `GET /market/account`. Image/metadata routes serve validated content hashes. Contract listing/buy/cancel/withdraw operations use the local chain bridge; the API does not charge fiat payments.
+
+### 8.2 Production turn-handler target (Postgres)
 
 ```
 BEGIN TX
@@ -320,7 +325,7 @@ RLS: all game tables deny anon/authenticated by default; access only through API
 
 | Failure                      | Behavior                                                                                                     |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Caspy provider error         | Fallback via LiteLLM; if all fail,`turn.status='refunded'`, attempt restored                                 |
+| Caspy provider error         | Fallback via Bifrost; if all fail,`turn.status='refunded'`, attempt restored                                 |
 | Judge unparseable/timeout    | Retry once; then`NO_YIELD` and **attempt consumed only if Caspy reply was shown**; flagged for review sample |
 | Client disconnect mid-stream | Turn still completes server-side; result retrievable via`GET /game/session`                                  |
 | Signer unavailable           | Session closes normally; voucher issued asynchronously when signer recovers                                  |
@@ -343,31 +348,27 @@ RLS: all game tables deny anon/authenticated by default; access only through API
 ### 9.3 Sybil Resistance (tiered, configurable)
 
 - Baseline: wallet must have > 0 on-chain history (tx count >= 1) or be older than N days.
-- Optional: allowlist/Merkle gate, Gitcoin Passport / World ID / social verification for the **Treat** claim (Trick remains open).
+- Future option: evaluate allowlist/Merkle or other anti-Sybil verification for earned candy claims. The current local MVP uses account/wallet binding and a seasonal wallet cap; losses never receive a fallback NFT.
 - Funding-graph heuristic: flag many fresh wallets funded from one source.
 - Flagged wallets: allowed to play, but wins go to `pending_review`.
 
 ### 9.4 Cost Model
 
-- Budget per session: ~3 Caspy calls + 3 judge calls. Target < $0.02 per session at launch pricing; hard cap $0.05/session enforced via LiteLLM per-key budgets and `max_tokens`.
+- Budget per session: ~3 Caspy calls + 3 judge calls. Target < $0.02 per session at launch pricing; hard cap $0.05/session enforced via Bifrost per-key budgets and `max_tokens`.
 - Alert at 70% of daily budget.
 
 ## 10. Smart Contract Specification
 
-- Standard: ERC-721 (ERC-1155 deferred; Trick editions could be 1155 in v2).
-- Contract `CaspyHeist`:
-  - `mintWithVoucher(Voucher v, bytes sig)` — verifies EIP-712 signature from `signer` role, checks `block.timestamp <= deadline`, `v.to == msg.sender` (or relayer variant with `v.to` receiving), marks `usedSession[v.sessionId]`, enforces `treatMinted < treatSupply`.
-  - Roles (OpenZeppelin AccessControl): `DEFAULT_ADMIN` (multisig), `SIGNER_ROLE` (rotatable), `PAUSER_ROLE`.
-  - `pause()/unpause()`, `setSigner()`, `setBaseURI()` (freezeable), `reveal`-free: metadata static per tier + token-specific on-chain trait seed.
-  - Treat supply cap immutable per season; no owner mint.
-  - EIP-2981 royalties (optional).
-- Metadata: IPFS/Arweave; Trick variants randomized from a pool using `prevrandao`-independent deterministic seed (hash of sessionId + secret salt revealed post-season) to avoid manipulable randomness.
-- Security: Foundry tests (unit + fuzz + invariant: `treatMinted <= supply`, one mint per session), Slither, third-party audit before mainnet, 2-of-3+ multisig admin, timelock on signer rotation.
-- Signer key in KMS; rotation runbook; voucher domain separation includes `chainId` + `verifyingContract`.
+The implemented v2 `CaspyHeist` ERC-721 uses `mintCandy(CandyVoucher, uri, signature)` with EIP-712 domain separation. It validates score/grade agreement, recipient, signer, deadline, session/wallet replay, content/URI commitments and immutable maximum supply. It exposes signer rotation and pause controls, tracks creator/grade/score/content hashes and permits an immutable prompt license. No failure tier, random rarity or owner reward mint is part of the current reward flow.
+
+`CaspyCandyMarket` provides fixed-price escrow listing, exact-price buying, cancellation and seller proceeds withdrawal. Prompt-access licensing is distinct from research dataset rights. Local content URLs and development signing are not production custody/storage guarantees.
+
+Before a public deployment: independent contract/security review, durable asset delivery, production signer custody, appropriate admin/multisig and incident controls, and validation on the chosen target chain are required. Historical Treat/Trick metadata pools and relayer proposals do not describe the deployed local v2 contract.
 
 ## 11. Frontend Specification
 
-- Pages: Landing, Play (chat), Result, Claim/Tx status, Gallery/Wall of Heists, FAQ/Rules.
+- Implemented routes: Landing, Login, Register, Account, Play, Result/Claim, Collection, Marketplace, How to play, Research, Datasets, Gallery, Rules, Privacy and Terms. A route existing does not imply every production integration in this document is enabled.
+- How-to-play film: 100 seconds, ten chapters, animated website screenshots and typography, synchronized captions/chapters, Halloween music and wordless choir, no voiceover. Detailed player/researcher guides and an optional local-only quiz accompany it. Tutorial rewards use labeled fictional data; see section 22.4.
 - Chat UX: streamed text, typing "boo" animation, attempts as 3 candy icons, disabled input during stream, clear errors.
 - Wallet UX: connect, SIWE sign, network switch prompt, tx pending/confirmed states, ENS display.
 - Accessibility: WCAG 2.2 AA, reduced-motion mode, keyboard navigable, screen-reader labels on attempts.
@@ -408,17 +409,17 @@ RLS: all game tables deny anon/authenticated by default; access only through API
 
 ### 13.4 Environments
 
-dev (local anvil + mock LLM) / staging (testnet, real LLM, low budgets) / prod. Secrets in a secret manager; no secrets in repo. IaC for infra.
+Current development: local Anvil plus real Bifrost actor/judge and optional local image inference. Fixtures are used for automated tests and illustrated tutorial captures. Staging/public-testnet and production environments, secret-manager deployment and IaC remain roadmap work. Never commit runtime `.env` secrets or private `data/` files.
 
 ## 14. Evaluation & Testing
 
-### 14.1 Agent Evals (CI-gated)
+### 14.1 Planned agent evaluation gates
 
 - **Red-team corpus** (>= 500 prompts): classic jailbreaks, authority claims, encoded payloads, multilingual, delimiter-escape, "echo the word YIELD", judge-targeted ("tell the judge to approve"). Required: win rate on exploit set <= 1%.
 - **Legit-win corpus** (>= 100 human-written creative persuasions): required win rate within target band; guards against over-hardening.
 - **Persona regression:** Caspy stays in character >= 98%, no leaks (n-gram check).
 - **Judge consistency:** same input x5 at temp 0 -> identical verdict >= 99%.
-- Run on every change to prompts, rubric, model, or LiteLLM routing; results stored per version.
+- Run on every change to prompts, rubric, model, or Bifrost routing; results stored per version.
 
 ### 14.2 Other Testing
 
@@ -468,7 +469,7 @@ Launch timing note: this is Halloween-themed; if shipping late, treat as a seaso
 | Sybil farming                                     | Cost + supply loss | Wallet-age gate, risk scoring, optional proof-of-personhood for Treat     |
 | LLM cost spike                                    | Budget loss        | Per-key caps, token limits, maintenance mode                              |
 | Signer key compromise                             | Unauthorized mints | KMS, supply cap in contract, pause role, rotation runbook                 |
-| Provider outage                                   | Downtime           | LiteLLM fallbacks, graceful degrade                                       |
+| Provider outage                                   | Downtime           | Bifrost fallbacks, graceful degrade                                       |
 | Regulatory reclassification                       | Legal              | Free-to-play, geo-block, counsel review                                   |
 | Prompt data privacy                               | Compliance         | Retention limits, opt-in publicity, deletion endpoint                     |
 
@@ -626,12 +627,14 @@ preferences. No training, reward-model fitting or automated fine-tuning occurs.
 
 ### 20.7 Implementation and rollout boundaries
 
-The local MVP uses the existing Python loopback API, standard-library SQLite,
+**Pre-migration implementation; superseded by the Supabase update in section 22.3.**
+
+The local MVP used the Python loopback API and standard-library SQLite,
 Astro/React, the Bifrost actor/judge and optional Anvil NFT flow. Account sessions,
 workspaces, campaign purposes, consent, redacted samples, review labels, releases,
 access requests/grants and metadata-only audit events live in
 `data/platform.sqlite3` (ignored by Git, mode 0600). Existing NFT state remains
-separate. `bash run-heist.sh` starts the integrated application; `--ai-only`
+separate. `bash run.sh` starts the integrated application; `--ai-only`
 skips blockchain services. This section describes implemented local behavior;
 earlier Postgres/FastAPI/KMS/public-network sections remain production targets.
 
@@ -694,8 +697,10 @@ Timeouts and memory failures preserve grades and do not issue mint vouchers.
 No failure silently calls a hosted paid provider.
 
 The candy is an illustrated character in Caspy’s Halloween art direction:
-rounded purple outlines, pastel lavender/cream shading, expressive little eyes,
-witch/pumpkin accents. Its theme comes from the redacted winning prompt. This
+a wrapped bonbon with a round sugar body, two twisted wrapper ends, purple
+outlines, pastel shading, expressive eyes and witch/pumpkin accents. The
+`caspy-candy-storybook-v2` style uses the redacted winning prompt to guide flavor,
+color and wrapper motifs. This
 version uses a style description; exact mascot consistency is not guaranteed.
 A poor pitch which fails the independent win checks gets no candy or NFT.
 The reward gate, quality rubric, cap and replay protections are unchanged.
@@ -765,8 +770,116 @@ idempotent generation, retry/budget limits, immutable content and metadata witho
 source text. Verify signed commitments on-chain, grade/signature tampering,
 wallet/session replay, supply exhaustion, exact-price escrow purchases, seller
 withdrawals and prompt access changing from seller to buyer. Local automated
-checks use explicitly marked fixture artwork. A real FLUX smoke test remains
-pending until the operator configures HF_TOKEN and credits.
+checks use explicitly marked fixture artwork. Real local Schnell generation succeeded and was visually reviewed (section 22.6); this does not establish a complete live win-to-sale flow. Hosted FLUX.1-dev verification remains blocked by provider credits.
+
+## 22. Implementation checkpoint — 4 November 2026
+
+### 22.1 Delivery status
+
+This checkpoint records local implementation and observed tests, not public-launch readiness. Sections 20–21 remain the detailed research/candy specifications; this section resolves current operating status and validation limits.
+
+| Capability | Current status | Boundary |
+| --- | --- | --- |
+| Registration/login | Implemented | Email/password, eight-hour account sessions, logout, roles/workspace access; recovery/email verification not implemented |
+| Wallet identity | Implemented locally | Verified linked Anvil test wallets; separate from account login |
+| Three-prompt gameplay | Implemented | Bifrost actor, independent judge, server-owned attempts/outcomes and pending-review recovery |
+| Win-only reward grading | Implemented | C/B/A/S from quality components and collection-relative novelty; no random draw and no loss NFT |
+| Candy artwork | Local backend implemented and real-render tested | Four-step, 512×512 quantized Schnell; slow, single worker; no hosted fallback on failure |
+| NFT and prompt-access market | Implemented and fixture-chain tested | Local v2 commitments, escrow listing/buy/cancel/proceeds and ownership-checked prompt access |
+| AI research platform | Implemented locally | Optional named campaigns, separate commercial permission, human review, scoped metrics, manual grants/export and withdrawal |
+| Dataset payments / RLHF training | Not connected | Listed prices and curated labeled examples do not constitute checkout, pairwise preferences or a training pipeline |
+| Walkthrough | Updated | Animated actual-interface captures with fictional data, chapters, captions, written guides and quiz |
+| Single launcher | Implemented | `./run.sh`; helper shell scripts grouped in `scripts/shell/` |
+| n8n | Not integrated | Only `n8n/.gitkeep`; no workflows, triggers, credentials, event dispatch or launcher service |
+
+### 22.2 Start/stop and repository layout
+
+Run from the project root:
+
+```bash
+./run.sh
+```
+
+The launcher checks required tools/configuration, installs missing frontend/chain dependencies, builds the contracts and prepares the local NFT deployment, starts or reuses the compatible local chain and Bifrost, then starts the API and frontend. It detects nvm Node installations. It requires Node 22+, Python 3, Git/curl, the Bifrost CLI and configured `.env` routes. It is a launcher, not a complete machine bootstrapper.
+
+| Service | Local address | Startup behavior |
+| --- | --- | --- |
+| Frontend | `http://localhost:4321/play` | Astro app; API requests proxy to loopback API |
+| Game/account/research API | `http://127.0.0.1:8000` | Initializes SQLite and application state |
+| Bifrost | `http://127.0.0.1:8080` | Uses validated actor/judge routes; dashboard available |
+| Blockchain | `http://127.0.0.1:8545` | Anvil chain 31337, test ETH only |
+| Local image worker | No public service port | Starts on an approved eligible artwork job; one worker |
+| n8n | None | Not required or started |
+
+Keep the terminal open. Ctrl+C stops services started by that launcher; previously running reused services remain operator-managed. Ports 8000/4321 must be free before launch; stop the earlier instance rather than starting a duplicate. Use `./run.sh --ai-only` to omit blockchain and NFT rewards. No separate database terminal is needed.
+
+```text
+run.sh                         # sole root shell entry point
+scripts/shell/run-bifrost.sh    # Bifrost helper used by run.sh
+scripts/shell/setup-flux.sh     # one-time local image runtime/checkpoint setup
+scripts/shell/run-heist.sh      # relocated compatibility helper → root run.sh
+```
+
+On a new supported Apple Silicon machine, run `bash scripts/shell/setup-flux.sh` once to prepare the isolated runtime and approximately 9 GiB model download. The launcher does not silently download those weights or replace missing image setup with paid inference. Runtime credentials stay server-side in ignored configuration. Local artwork still requires an eligible win and explicit generation approval.
+
+### 22.3 Database and persistence
+
+Migration completed: **98 live tables / 19,980 rows**, five lossless legacy archives with **39,776 rows**, and zero remaining SQLite database files under `data/`. All three PostgreSQL connection checks and 25 live regression cases passed; user-managed full-stack restart remains a separate validation step.
+
+**Supabase migration update (4 November):** the active runtime now targets
+Supabase PostgreSQL: `caspy` for application data, `caspy_bifrost_config` and
+`caspy_bifrost_logs` for the two gateway stores. The following SQLite paths
+record the pre-migration checkpoint, not a supported runtime fallback.
+Migration copies all legacy databases into private recovery archives, converts
+live tables/constraints/indexes, verifies row counts and content hashes, and
+removes old files only after validation. Existing account password hashes,
+sessions, permissions and gateway records are preserved. Supabase Auth and
+Storage are not introduced; chain state and image assets remain local.
+`run.sh` uses `.venv` with Psycopg and checks all three stores before startup.
+See [Supabase migration and recovery](docs/supabase.md) for the completed report
+and current operational details.
+
+
+- `data/platform.sqlite3`: SQLite accounts, hashed sessions, wallet links, organizations, campaigns, permissions, reviewed samples, releases, access requests/grants, audit metadata and candy jobs/attempts. Created and initialized by the API; private file mode 0600. No Supabase service is required for this local MVP.
+- `data/nft-games-*.json`: NFT heists scoped to contract/deployment identity. AI-only game conversations remain process-memory state and reset on API restart.
+- `data/anvil-state.json` and `data/nft-local.json`: local chain persistence and deployment configuration. A changed deployment can create a new season/collection; it does not silently migrate old NFTs.
+- `data/candy-assets/`: content-addressed artwork and metadata. Prompt text is excluded from public NFT metadata and only delivered through authorized access rules.
+- Bifrost keeps its own SQLite configuration/logging files under `data/`; these are separate from the account/research database.
+
+Normal restarts preserve these files. Do not delete `data/` as a restart procedure. Backup/recovery, encryption at rest, multi-instance consistency and managed retention operations still need production engineering. A localhost asset URI is not durable public NFT hosting.
+
+### 22.4 Gameplay presentation checkpoint
+
+The current how-to-play film is 100 seconds, 1600×900 at 30 fps, H.264/AAC, with ten synchronized chapters. It retains kinetic typography, Halloween music and a wordless choir without narration. Native and custom controls provide playback, seeking, chapter replay/looping, speed, audio toggling and captions. Player/researcher written guides and a three-question knowledge check remain available; quiz answers stay in component state.
+
+Eight website screenshots show the empty heist, partial/completed prompt input, earned grade, image approval/generate controls, generation progress, finished art and staged mint confirmation. These are the actual compiled interface populated with fictional tutorial responses on an isolated fixture origin. Camera moves, cursor cues and click pulses illustrate use. They are not a recording of a real eligible heist or transaction, and generation time is explicitly condensed. Collection and marketplace remain explanatory illustrations in this edition.
+
+Source storyboard: `frontend/src/lib/walkthrough.json`. Capture timing/crops: `frontend/src/lib/walkthrough-shots.json`. Published film: `frontend/public/videos/caspy-showcase.mp4`, cache version `kinetic-halloween-website-v5`. The temporary capture server blocks backend writes and is stopped after use. See [walkthrough rendering and QA](docs/animated-walkthrough.md).
+
+### 22.5 What n8n is for
+
+n8n is an optional workflow-automation service: it can receive an event and perform configured follow-up actions. Caspy's intended use is off-chain notifications after trusted events—for example an operator alert on repeated generation failures, a research review-queue reminder, or a mint-confirmation notification. These are proposed workflows, not shipped functionality.
+
+The repository currently contains only a placeholder `n8n/` directory. There are no workflow exports, configured webhooks or application calls into n8n. It does not store Caspy accounts, serve AI replies, judge prompts, generate artwork, deploy contracts or run the marketplace. `./run.sh` correctly starts the currently implemented stack without n8n.
+
+If added later, the API/chain-confirmation layer should emit authenticated, minimal event payloads with stable event IDs and bounded retries. Workflows must deduplicate retries and handle delivery failure independently of gameplay. Do not send raw private prompts, passwords, session cookies or signing keys to notification workflows. Notification delivery must never grant a win, consume/refund an attempt, alter grade, sign a voucher or mint. A failed notification must not reverse a confirmed game or transaction. Any outgoing email/Discord/etc. integration needs explicit operator configuration and a defined recipient/purpose.
+
+### 22.6 Validation evidence and unresolved items
+
+These are dated observations, not a fresh full regression run for this documentation update:
+
+- Application/contract QA on 3 November: **94 distinct automated tests passed; one optional full live AI mint test not run**. Separately, 24 live HTTP checks passed. Auth/research HTTP coverage includes roles, scope denial, review/releases, grants, export filtering and withdrawal. Contract tests exercise commitments, replay, supply and marketplace operations with fixture artwork.
+- Four synthetic live judge cases produced the expected win/no-win gates. One benign declined story returned category `exploit_attempt` with `exploit_flag: false`. Category/flag consistency and broader labeled calibration remain unresolved; four cases do not establish benchmark validity.
+- Real local Schnell QA produced the revised wrapped candy in 249.43 seconds; an earlier render took 304.5 seconds. One attempt failed before a same-prompt/seed retry succeeded. Roughly 7.9 GB worker memory was observed on an 8 GiB M3. Cause of the transient failure is unknown; throughput/concurrency is not validated. Local generation has no image safety classifier and records this in provenance.
+- On 3 November the live API still reported old, unconfigured hosted FLUX.1-dev after a reported restart. File/runtime readiness checks passed for local Schnell, but activation remained unverified. Before the next live reward test, restart the actual original launcher and require `/candy/config` to report Schnell, `generation_local: true` and `configured: true`. This historical observation does not establish today's running process state.
+- Walkthrough v5 validation on 4 November: encoded video/audio, duration, format, motion and eight nonblank in-bounds screenshot crops passed; decoded audio had zero clipped samples. Frontend checks reported zero errors/warnings/hints, all seven tests passed and the production build passed. New browser playback was limited by unreliable capture; prior v4 play/seek/pause checks passed in Safari.
+- Launcher reorganization: shell syntax/help and helper resolution from another working directory passed. These checks did not start or certify the entire running stack.
+
+**Next acceptance gate:** activate the correct local backend and complete a real eligible win → image generation → voucher → mint → collection → listing → purchase → private prompt-access flow. Fixture integration and staged tutorial captures do not replace this test. Also resolve contradictory judge labels and document failure/retry behavior under memory pressure.
+
+Public rollout additionally needs production identity/storage/signing, durable artwork delivery, rights/licensing review, representative held-out evaluation, mobile/cross-browser/accessibility testing, load/security testing and independent contract review. No public-chain deployment, paid inference checkout, real-money settlement or n8n delivery is certified at this checkpoint.
+
+Evidence: [full QA](docs/qa-report-2026-11-03.md), [local image QA](docs/qa-local-schnell.md), [account/research guide](docs/platform.md), [candy/marketplace guide](docs/candy.md).
 
 ## Appendix A: Threat Model Summary (STRIDE)
 

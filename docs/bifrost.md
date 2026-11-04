@@ -1,12 +1,14 @@
+> Storage update: both Bifrost stores now target Supabase PostgreSQL using dedicated private schema roles. `./run.sh` checks these connections. See [database migration](supabase.md); earlier SQLite instructions below are historical.
+
 # Caspy's Bifrost gateway
 
 Bifrost is the third-party gateway in the ignored `bifrost/` clone. Caspy's
 configuration and tooling live in the root repository so a fresh checkout can
 reproduce the setup without changing upstream code. The frontend supports a
-local AI playground through `scripts/heist_api.py`. Run `bash run-heist.sh --ai-only`
+local AI playground through `scripts/heist_api.py`. Run `bash run.sh --ai-only`
 from the root and open <http://localhost:4321/play>. The production FastAPI
 game API and production signing/deployment remain separate work. For wallet
-sign-in and NFT claims on local Anvil, use `bash run-heist.sh`; see the
+sign-in and NFT claims on local Anvil, use `bash run.sh`; see the
 [local NFT guide](nft-local.md).
 
 ## Local setup
@@ -20,7 +22,7 @@ live QA, unless you already supply a version.
 python3 scripts/bifrost_setup.py init
 # Fill OPEN_ROUTER_API_KEY in the root .env.
 python3 scripts/bifrost_setup.py check
-bash run-bifrost.sh
+bash scripts/shell/run-bifrost.sh
 ```
 
 The initializer generates missing setup/admin credentials and separate actor and
@@ -107,7 +109,7 @@ Offline regression checks need no provider access:
 
 ```bash
 python3 -m unittest discover -s scripts -p 'test_*.py' -v
-bash -n run-bifrost.sh
+bash -n scripts/shell/run-bifrost.sh
 ```
 
 ## Update and recovery
@@ -118,7 +120,7 @@ template after reviewing it, stop your gateway and run:
 ```bash
 python3 scripts/bifrost_setup.py init --update-config
 python3 scripts/bifrost_setup.py check
-bash run-bifrost.sh
+bash scripts/shell/run-bifrost.sh
 ```
 
 This backs up the existing JSON to `data/config.<random>.backup.json`, replaces

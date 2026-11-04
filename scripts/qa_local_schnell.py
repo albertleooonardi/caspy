@@ -13,7 +13,7 @@ def main():
     if output.exists():
         print('The current local QA sample already exists: '+str(output.relative_to(ROOT)));return
     renderer=LocalSchnell()
-    if not renderer.configured: raise SystemExit('Local model is not ready. Run bash setup-flux.sh first.')
+    if not renderer.configured: raise SystemExit('Local model is not ready. Run bash scripts/shell/setup-flux.sh first.')
     source='A lemon-drop lighthouse guides three lost ghosts home. Its warm sugar windows glow above a sea of moonbeam cookies.'
     started=time.monotonic()
     print('Rendering one local Caspy-style candy QA sample. This may take several minutes on an 8 GB Mac.',flush=True)

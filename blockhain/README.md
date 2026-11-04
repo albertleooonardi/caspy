@@ -1,4 +1,4 @@
-> Current v2: only winning prompts earn FLUX-generated graded candies; losses mint nothing. See [candy setup](../docs/candy.md) and PRD section 21. Treat/Trick v1 commands below are historical; use `bash run-heist.sh` for v2.
+> Current v2: only winning prompts earn FLUX-generated graded candies; losses mint nothing. See [candy setup](../docs/candy.md) and PRD section 21. Treat/Trick v1 commands below are historical; use `bash run.sh` for v2.
 
 # Caspy's Heist Smart Contracts
 
@@ -13,7 +13,7 @@ Solidity contracts for the Caspy's Prompt Heist NFT game. Implements ERC-721 wit
 
 ## Caspy game integration
 
-From the repository root, run `bash run-heist.sh` and open
+From the repository root, run `bash run.sh` and open
 <http://localhost:4321/play>. Connect the local test wallet, play the heist,
 and claim the server-confirmed Treat or Trick. See the
 [local NFT integration guide](../docs/nft-local.md).

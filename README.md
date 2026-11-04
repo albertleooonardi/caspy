@@ -27,7 +27,7 @@ The win decision is made by a **separate judge call** — never by Caspy's own t
 | Frontend | Astro + React/Solid islands | SSE chat island; wagmi + viem; Reown |
 | API | FastAPI (async) | Pydantic v2 models for all LLM I/O |
 | LLM gateway | BiFrost | Primary + fallback, budgets, retries, per-key spend caps |
-| Database | Supabase Postgres | RLS enabled; service-role key server-only |
+| Database | Supabase PostgreSQL | Private schemas; server-only PostgreSQL credentials; account checks in API |
 | Cache / limits | Redis (Upstash) | Sliding-window limits, distributed locks |
 | Signing | Cloud KMS (secp256k1) | Key never in app env |
 | Chain | Base (default) | Cheap gas, wide wallet support |
@@ -58,29 +58,65 @@ licensing requests and authorized JSON downloads. Research sharing never affects
 your game result or NFT eligibility. Dataset redaction requires human review and
 does not guarantee anonymity. Payment processing and model training are not connected.
 
-Run `bash run-heist.sh`, open `/register`, and choose **Play & contribute** or
+Run `bash run.sh`, open `/register`, and choose **Play & contribute** or
 **Evaluate AI**. Research tools are at `/research`, datasets at `/datasets`, and
 consent withdrawal at `/account`. See [the platform guide](docs/platform.md) for
 the complete workflow, verification and local-development limits.
 
 ## Getting started
 
+### Start everything
+
+From the project root:
+
+```bash
+./run.sh
+```
+
+This launches the frontend, game API, Bifrost and local Anvil blockchain. Open
+<http://localhost:4321/play>. Keep the terminal open; Ctrl+C stops the services
+this launcher started. You do not need to start Bifrost or a database separately.
+All other shell helpers are grouped under `scripts/shell/`; `run.sh` is the only
+shell script in the project root.
+Local NFT mode uses built-in Anvil test wallets and test ETH.
+
+### Database and saved data
+
+The runtime database is **Supabase PostgreSQL**, configured server-side with
+`SUPABASE_DB_URL` in the root `.env`. `./run.sh` checks the database and both
+Bifrost PostgreSQL stores before starting. Accounts, sessions, research records
+and candy jobs live in the private `caspy` schema; Bifrost configuration and logs
+use separate private schemas and dedicated roles. No runtime SQLite fallback is
+used. Existing password hashes and account login are preserved; this is not
+Supabase Auth. See [Supabase setup and migration](docs/supabase.md).
+
+NFT game state remains in `data/nft-games-*.json`, local blockchain state in
+`data/anvil-state.json`, and generated images/metadata in `data/candy-assets/`.
+AI-only game conversations remain in memory and reset on API restart.
+Migration recovery exports are private and ignored by Git. Do not delete `data/`
+to restart the app; it still contains local NFT state, artwork and configuration.
+
 ### Prerequisites
 
-- Node.js (LTS)
-- A wallet (MetaMask, Rabby, or any WalletConnect-compatible wallet)
+- Node.js 22 or later and npm (the launcher also detects nvm installations).
+- Python 3, Git, curl and the installed Bifrost CLI.
+- Configured root `.env` and Bifrost routes; see the setup instructions below.
+- For local candy artwork: Apple Silicon and the one-time `bash scripts/shell/setup-flux.sh`
+  setup. Once prepared, the image worker runs on demand; it needs no separate
+  terminal or Hugging Face credits.
 
 ### Frontend (Astro)
 
 For **live Caspy gameplay with local NFT minting**, run:
 
 ```bash
-bash run-heist.sh
+bash run.sh
 ```
 
 Register or sign in at <http://localhost:4321/register>, then open `/play`,
 connect an available local test wallet, and play your heist,
-then claim your Treat or Trick on Anvil (chain 31337). The launcher builds and
+then generate and mint your earned candy after a confirmed win on Anvil (chain 31337).
+A loss earns no candy or NFT. The launcher builds and
 deploys the NFT contract and connects wallet sign-in, server vouchers and mint
 confirmation. No real funds or private keys are required. See the
 [local NFT guide](docs/nft-local.md) for setup, persistence and verification.
@@ -88,7 +124,7 @@ confirmation. No real funds or private keys are required. See the
 For **AI-only gameplay without blockchain or NFTs**, run from the project root:
 
 ```bash
-bash run-heist.sh --ai-only
+bash run.sh --ai-only
 ```
 
 Sign in, then open <http://localhost:4321/play> and choose **Start an AI heist**. This starts
@@ -116,7 +152,7 @@ npm run dev
 
 Set `PUBLIC_LOCAL_AI=false` and leave `PUBLIC_API_URL` empty in `frontend/.env`
 for scripted demo mode. To run the AI services separately, start
-`bash run-bifrost.sh`, `python3 scripts/heist_api.py`, and (in `frontend/`)
+`bash scripts/shell/run-bifrost.sh`, `python3 scripts/heist_api.py`, and (in `frontend/`)
 `PUBLIC_LOCAL_AI=true npm run dev -- --host 127.0.0.1` in three terminals.
 
 ### LLM gateway (Bifrost)
@@ -125,7 +161,7 @@ for scripted demo mode. To run the AI services separately, start
 python3 scripts/bifrost_setup.py init
 # Fill OPEN_ROUTER_API_KEY in the root .env; configured models are free.
 python3 scripts/bifrost_setup.py check
-bash run-bifrost.sh
+bash scripts/shell/run-bifrost.sh
 ```
 
 The gateway runs at <http://127.0.0.1:8080> with separate actor/judge virtual
@@ -157,13 +193,13 @@ NFTs have no promised financial value. This is a free-to-play, skill-based game;
 
 ### Prompt-generated candy NFTs
 
-Run the full local stack with `bash run-heist.sh`. Winning prompts now earn a
+Run the full local stack with `bash run.sh`. Winning prompts now earn a
 recorded C/B/A/S grade and one FLUX-generated candy; losses receive no NFT. Visit
 `/result` to generate and mint, `/collection` to manage prompt access/listing, and
 `/marketplace` to trade with local test ETH. The launcher deploys the v2 candy
 contract and marketplace while preserving older deployment state.
 
-Local FLUX.1-schnell is the default. Run `bash setup-flux.sh` once for the local
+Local FLUX.1-schnell is the default. Run `bash scripts/shell/setup-flux.sh` once for the local
 runtime and quantized weights; no inference credits are required. Optional hosted
 FLUX.1-dev requires explicit `CASPY_IMAGE_BACKEND=hf-dev`, server-side HF_TOKEN
 and provider credits. Neither backend generates a reward before an eligible win.
@@ -173,8 +209,8 @@ and PRD section 21.
 ### No-credit local image generation
 
 The workspace now selects `CASPY_IMAGE_BACKEND=local-schnell`. Run
-`bash setup-flux.sh` once to install MFLUX and download the ~9 GiB quantized
-Schnell checkpoint, then `bash run-heist.sh`. Winning prompts inspire candy
+`bash scripts/shell/setup-flux.sh` once to install MFLUX and download the ~9 GiB quantized
+Schnell checkpoint, then `bash run.sh`. Winning prompts inspire candy
 characters in Caspy’s illustrated style. Losing heists receive nothing.
 The 8 GB M3 uses 512×512, four steps, low-memory mode and a single generation
 worker. No paid fallback is made; completion depends on available memory.

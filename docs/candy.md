@@ -1,12 +1,12 @@
 # Prompt-generated candy
 
-Run `bash run-heist.sh` from the project root. It starts the frontend on
+Run `bash run.sh` from the project root. It starts the frontend on
 http://localhost:4321, Python API, Bifrost and local Anvil blockchain.
 Node/npm are loaded from nvm when available. No real ETH is used.
 
 1. Run the one-time local setup on an Apple Silicon Mac:
    ```sh
-   bash setup-flux.sh
+   bash scripts/shell/setup-flux.sh
    ```
    This installs an isolated MFLUX 0.24.0 runtime and downloads the pinned public
    `mflux-community/flux-1-schnell-mflux-q4` checkpoint (~9 GiB). It requires Python

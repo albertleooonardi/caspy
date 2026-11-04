@@ -22,16 +22,30 @@
   },
   "config_store": {
     "enabled": true,
-    "type": "sqlite",
+    "type": "postgres",
     "config": {
-      "path": "./data/caspy-bifrost.db"
+      "host": "env.CASPY_BF_CONFIG_HOST",
+      "port": "env.CASPY_BF_CONFIG_PORT",
+      "user": "env.CASPY_BF_CONFIG_USER",
+      "password": "env.CASPY_BF_CONFIG_PASSWORD",
+      "db_name": "env.CASPY_BF_CONFIG_DATABASE",
+      "ssl_mode": "require",
+      "max_idle_conns": 1,
+      "max_open_conns": 3
     }
   },
   "logs_store": {
     "enabled": true,
-    "type": "sqlite",
+    "type": "postgres",
     "config": {
-      "path": "./data/caspy-bifrost-logs.db"
+      "host": "env.CASPY_BF_LOGS_HOST",
+      "port": "env.CASPY_BF_LOGS_PORT",
+      "user": "env.CASPY_BF_LOGS_USER",
+      "password": "env.CASPY_BF_LOGS_PASSWORD",
+      "db_name": "env.CASPY_BF_LOGS_DATABASE",
+      "ssl_mode": "require",
+      "max_idle_conns": 1,
+      "max_open_conns": 3
     }
   },
   "governance": {

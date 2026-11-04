@@ -93,8 +93,7 @@ class CandyStore:
                 db.execute('INSERT INTO candy_jobs(id,user_id,namespace,wallet,prompt,prompt_hash,normalized,assessment,state,seed,created) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
                     (game['id'],user['id'],self.namespace,wallet.lower(),prompt,digest,normalized(prompt),json.dumps(assessment),'earned',seed,int(time.time())))
             except Exception as error:
-                import sqlite3
-                if isinstance(error,sqlite3.IntegrityError): raise Fault(409,'This wallet already has its candy entitlement for the season.') from None
+                if isinstance(error,self.platform.integrity_error): raise Fault(409,'This wallet already has its candy entitlement for the season.') from None
                 raise
             return self.public(db.execute('SELECT * FROM candy_jobs WHERE id=?',(game['id'],)).fetchone())
 
@@ -137,7 +136,7 @@ class CandyStore:
         row=self.row(ident,user)
         if row['state'] in ('ready','generating'): return self.public(row)
         if not self.renderer.configured:
-            raise Fault(503,'Prepare local Schnell with bash setup-flux.sh, then restart Caspy.' if getattr(self.renderer,'local',False) else 'Hosted FLUX requires HF_TOKEN and provider credits.')
+            raise Fault(503,'Prepare local Schnell with bash scripts/shell/setup-flux.sh, then restart Caspy.' if getattr(self.renderer,'local',False) else 'Hosted FLUX requires HF_TOKEN and provider credits.')
         if row['state'] in ('failed','uncertain') and retry is not True: raise Fault(409,'Explicitly confirm a retry; local retries use compute and hosted retries may incur another charge.')
         with self.platform.db() as db:
             # Re-read under the transaction lock to prevent duplicate calls.
@@ -181,7 +180,7 @@ class CandyStore:
                 'permission':'Hugging Face denied access. Check Inference Providers permission and model/provider access; your earned grade is saved.',
                 'billing':'Hugging Face requires provider credits or billing before it can generate this image. Your earned grade is saved.',
                 'rate_limit':'The image provider is rate-limiting requests. Try again later; your earned grade is saved.',
-                'local_configuration':'Local Schnell is not prepared. Run bash setup-flux.sh and restart Caspy. Your grade is saved.',
+                'local_configuration':'Local Schnell is not prepared. Run bash scripts/shell/setup-flux.sh and restart Caspy. Your grade is saved.',
                 'local_timeout':'Local generation exceeded 20 minutes on this Mac. Your grade is saved; close other apps before an explicit retry.',
                 'local_generation':'Local Schnell could not finish. Check available memory and the local model setup. Your grade is saved.',
                 'configuration':'The hosted image client is not configured. Check HF_TOKEN and install scripts/requirements-candy.txt.',

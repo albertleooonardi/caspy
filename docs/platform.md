@@ -1,12 +1,14 @@
+> Database update: production/runtime records now use private Supabase PostgreSQL schemas; older SQLite references below describe the pre-migration implementation. See [Supabase migration](supabase.md).
+
 # Caspy accounts and AI evaluation workspace
 
 Start the integrated application from the repository root:
 
 ```bash
-bash run-heist.sh
+bash run.sh
 ```
 
-Use `bash run-heist.sh --ai-only` to run without Anvil/NFTs. The same account
+Use `bash run.sh --ai-only` to run without Anvil/NFTs. The same account
 and research features work in both modes. Restart an older launcher after
 updating, so the Python API loads the account endpoints. This is a local
 application on <http://localhost:4321>; it does not publish a public service.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Validate the local configuration, then start Bifrost on loopback.
-# Usage: bash run-bifrost.sh
+# Usage from project root: bash scripts/shell/run-bifrost.sh
 set -euo pipefail
-PROJECT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 exec python3 "$PROJECT_DIR/scripts/bifrost_setup.py" run

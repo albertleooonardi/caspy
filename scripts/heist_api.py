@@ -331,6 +331,9 @@ class Handler(BaseHTTPRequestHandler):
                 result['listings'] = [candy.decorate_token(item) for item in result['listings']]
                 self.json_response(200, result)
                 return
+            if candy and self.path == '/market/history':
+                self.json_response(200, nft.call('history'))
+                return
             if platform and platform.handle(self):
                 return
             token = self.owner()
@@ -534,7 +537,8 @@ def main():
         server.nft = LocalNFT()
         store = ROOT / f"data/nft-games-{server.nft.config['contract'].lower()}-{server.nft.config['deployment_block_hash'][2:14]}.json"
     gateway = Gateway()
-    server.platform = Platform(ROOT / 'data/platform.sqlite3', gateway.evaluation_metadata())
+    from database import database_url
+    server.platform = Platform(database_url(environment(ROOT)), gateway.evaluation_metadata())
     server.games = Games(gateway, store)
     server.candy = None
     if server.nft:

@@ -1,4 +1,4 @@
-# Caspy interactive field guide — edition 04
+# Caspy interactive field guide — edition 05
 
 The current film is **100 seconds, 1600×900, 30 fps, H.264 video + stereo AAC**.
 It uses large kinetic typography, masked line reveals, spring entrances, sliding
@@ -31,7 +31,7 @@ renderer, audio timing, chapter UI and tests. The film covers:
 | 1:34 | 6 s | Your turn |
 
 The current media use `frontend/public/videos/caspy-showcase*` and the cache tag
-`kinetic-halloween-gameplay-v4`. Original `caspy-walkthrough*` files remain for older links;
+`kinetic-halloween-website-v5`. Original `caspy-walkthrough*` files remain for older links;
 they are not used by the current film player.
 
 ## Interaction and accessibility
@@ -70,7 +70,8 @@ swiftc -suppress-warnings -module-cache-path /private/tmp/caspy-swift-module-cac
   frontend/public/images/logo-transparent.png \
   data/tutorial-v2/soundtrack.wav \
   /private/tmp/caspy-showcase-v2 \
-  --candy frontend/public/images/tutorial/candy-example.png
+  --candy frontend/public/images/tutorial/candy-example.png \
+  --captures frontend/src/lib/walkthrough-shots.json
 ```
 
 Use `--stills` as a final argument to render only ten chapter previews, the poster,
@@ -147,3 +148,53 @@ build passed. Machine-readable media results: ignored
 Safari smoke check: the guide loaded the v4 media URL, playback started, chapter
 08 sought to 1:12 with the new prompt-to-candy instructions, and pause stopped
 playback at 1:16. The updated player and captions are served by the existing app.
+
+## Website capture revision (v5)
+
+Eight real website screenshots are now animated inside the film: the empty
+heist, partial and completed prompt entry, confirmed grade, generation permission
+and button, generation in progress, finished artwork, and mint confirmation.
+The screenshot scenes include camera moves, a moving pointer and click pulses.
+They supplement the existing outcome diagram, attempt counters and collection /
+marketplace illustrations. The film remains 100 seconds, with the Halloween
+score and wordless choir and no narration.
+
+These are screenshots of the real compiled frontend rendered against fictional
+tutorial responses, not footage of a live eligible win or blockchain transaction.
+The source images live in `frontend/public/images/tutorial/website/`; crop regions,
+timing and labels live in `frontend/src/lib/walkthrough-shots.json`. Every shot
+is labeled as fictional tutorial data; generation time is explicitly condensed.
+Collection and marketplace remain explanatory illustrations rather than captured
+transactions. Safari/Chrome capture became unreliable during the resumed work;
+blank frames were excluded, and the usable saved captures were visually reviewed.
+
+To reproduce the isolated fixture, build the frontend with
+`PUBLIC_NFT_ENABLED=true`, `PUBLIC_LOCAL_AI=true`,
+`PUBLIC_CONTRACT_ADDRESS=0x1111111111111111111111111111111111111111` and
+`PUBLIC_NFT_SEASON=tutorial-only`. For example, from `frontend/`, run
+`npm run build -- --outDir ../data/tutorial-v5/site`, then from the repository
+root run `python3 scripts/tutorial_capture_server.py data/tutorial-v5/site`.
+Only the temporary fixture origin uses the injected tutorial script; the normal
+application and its authentication/reward gates are unchanged. API writes and
+external fetches are blocked. Capture pages such as `/play/?tutorial=prompt`
+and `/result/?tutorial=ready` using native browser UI, then stop the server.
+No account, research contribution, image request or NFT is created by the fixture.
+
+Render with `--captures frontend/src/lib/walkthrough-shots.json` as well as
+`--candy`. `--stills` exports each chapter and all eight screenshot shot previews
+for visual inspection. The renderer crops out browser chrome and only uses
+fictional tutorial data; do not replace these with personal account screenshots.
+
+### v5 verification — 4 November 2026
+
+The updated film passed media decoding checks: 100 seconds, 1600 × 900,
+30 fps, one video and one audio track, 34,421,352 bytes. Audio RMS is
+−20.51 dBFS, peak −6.32 dBFS, with zero clipped samples. Animated frames
+were verified; all eight screenshot crops passed bounds and nonblank checks.
+Screenshot previews were inspected and heading/capture labels were separated
+to remove an overlap found in the first preview. Frontend checking reported
+zero errors/warnings/hints, all seven tests passed, and the production build
+passed. Media metrics are saved in ignored `data/tutorial-v5/media-qa.json`.
+The v5 encode was validated offline; a new browser playback check was limited
+by unreliable native browser capture. Earlier v4 playback had passed in Safari.
+The temporary capture server was stopped after use.

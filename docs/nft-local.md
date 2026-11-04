@@ -1,4 +1,4 @@
-> Current v2: only winning prompts earn FLUX-generated graded candies; losses mint nothing. See [candy setup](candy.md) and PRD section 21. Treat/Trick v1 commands below are historical; use `bash run-heist.sh` for v2.
+> Current v2: only winning prompts earn FLUX-generated graded candies; losses mint nothing. See [candy setup](candy.md) and PRD section 21. Treat/Trick v1 commands below are historical; use `bash run.sh` for v2.
 
 # Caspy local NFT integration
 
@@ -13,7 +13,7 @@ Requires Python 3, Node 22+ and a root `.env` that passes
 frontend on ports 8000/4321, then run from the repository root:
 
 ```bash
-bash run-heist.sh
+bash run.sh
 ```
 
 The launcher installs the pinned local contract tools if needed, builds the
@@ -40,7 +40,7 @@ development accounts are exclusively for the local chain.
 
 Ctrl+C stops the services started by the launcher. An existing Bifrost/Anvil
 instance is left running. The default starts all four services. Use
-`bash run-heist.sh --ai-only` for the separate AI playground without blockchain
+`bash run.sh --ai-only` for the separate AI playground without blockchain
 or NFT claims. `--nft` remains an alias for the default.
 
 ## What is connected

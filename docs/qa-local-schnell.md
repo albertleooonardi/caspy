@@ -68,6 +68,6 @@ and exploit checks plus candy-only art direction remain in force.
 ## Run
 
 Model setup is already complete in this workspace. Restart the user-managed app
-with `bash run-heist.sh` to load the new backend selection and code. On another
-Apple Silicon Mac, first run `bash setup-flux.sh`. To generate a separate visual
+with `bash run.sh` to load the new backend selection and code. On another
+Apple Silicon Mac, first run `bash scripts/shell/setup-flux.sh`. To generate a separate visual
 QA sample without creating a game reward, run `python3 scripts/qa_local_schnell.py`.

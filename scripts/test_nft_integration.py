@@ -167,13 +167,26 @@ class NFTIntegration(unittest.TestCase):
         self.driver('write',contract=self.config['contract'],function_name='licensePrompt',args=[status['token_id'],'Non-exclusive source prompt access; no copyright transfer.'])
         self.driver('write',contract=self.config['contract'],function_name='approve',args=[self.config['market'],status['token_id']])
         self.driver('write',contract=self.config['market'],market=True,function_name='list',args=[status['token_id'],'1000'])
+        self.assertEqual(self.api('/market/history')['sales'], [])
         listed=self.api('/market/listings')['listings'][0]
         self.assertNotIn('prompt',listed)
         seller_cookie,seller_cookies=self.cookie,dict(self.cookies)
         seller=self.account
         buyer=self.sign_in(8)
         self.api('/candy/prompt/'+status['token_id'],expected=403)
-        self.driver('write',contract=self.config['market'],market=True,function_name='buy',args=[listed['listing_id']],value='1000')
+        purchase=self.driver('write',contract=self.config['market'],market=True,function_name='buy',args=[listed['listing_id']],value='1000')
+        history=self.api('/market/history')
+        self.assertEqual(history['chain_id'],31337)
+        self.assertEqual(history['total_sales'],1)
+        self.assertFalse(history['truncated'])
+        sale=history['sales'][0]
+        self.assertEqual(sale['token_id'],status['token_id'])
+        self.assertEqual(sale['listing_id'],listed['listing_id'])
+        self.assertEqual(sale['price_wei'],'1000')
+        self.assertEqual(sale['transaction_hash'],purchase['hash'])
+        self.assertEqual(sale['seller'].lower(),address.lower())
+        self.assertEqual(sale['buyer'].lower(),buyer.lower())
+        self.assertGreater(sale['timestamp'],0)
         self.assertEqual(self.api('/candy/prompt/'+status['token_id'])['prompt'],'A clever ghost bakery trade.')
         self.assertEqual(self.api('/candy/collection')['tokens'][0]['owner'].lower(),buyer.lower())
         self.account=seller

@@ -1,6 +1,6 @@
 // Render Caspy's kinetic typography walkthrough. Native vector animation,
 // illustrative UI, and a supplied original music/wordless-choir WAV; no narration.
-// Usage: executable storyboard.json character.png soundtrack.wav output-dir [--candy image.png] [--stills]
+// Usage: executable storyboard.json character.png soundtrack.wav output-dir [--candy image.png] [--captures shots.json] [--stills]
 import AppKit
 import AVFoundation
 import ImageIO
@@ -84,6 +84,52 @@ let candyArtwork: CGImage? = {
           let image=CGImageSourceCreateImageAtIndex(source,0,nil) else { fatalError("Candy preview cannot be decoded") }
     return image
 }()
+struct WebsiteShot: Decodable {
+    let scene: String; let at: Double; let path: String; let crop: [Double]
+    let title: String; let detail: String; let pointer: [Double]?
+}
+var websiteShots: [WebsiteShot] = []
+var websiteImages: [String: CGImage] = [:]
+if let index=args.firstIndex(of:"--captures"), index+1<args.count {
+    let manifest=URL(fileURLWithPath:args[index+1])
+    websiteShots=try JSONDecoder().decode([WebsiteShot].self,from:Data(contentsOf:manifest))
+    for shot in websiteShots {
+        precondition(shot.crop.count==4 && shot.crop[2]>0 && shot.crop[3]>0,"Invalid screenshot crop")
+        let url=manifest.deletingLastPathComponent().appendingPathComponent(shot.path)
+        guard let src=CGImageSourceCreateWithURL(url as CFURL,nil),let image=CGImageSourceCreateImageAtIndex(src,0,nil),
+              let crop=image.cropping(to:CGRect(x:shot.crop[0],y:shot.crop[1],width:shot.crop[2],height:shot.crop[3])) else { fatalError("Missing screenshot: \(url.path)") }
+        websiteImages[shot.path]=crop
+    }
+}
+func websiteScene(_ c:CGContext,_ id:String,_ t:Double)->Bool {
+    guard let shot=websiteShots.filter({$0.scene==id && $0.at<=t}).last,let image=websiteImages[shot.path] else { return false }
+    let elapsed=t-shot.at
+    txt(c,shot.title,78,176,32,1430,45,cream,.bold)
+    // The screenshot is real UI. A clipped slow camera move and illustrated
+    // pointer explain the action; they do not imply a recorded transaction.
+    let area=r(75,256,1450,316)
+    box(c,r(75,244,1450,340),lavender,20)
+    c.saveGState();c.addPath(CGPath(roundedRect:area,cornerWidth:14,cornerHeight:14,transform:nil));c.clip()
+    c.setFillColor(lavender.cgColor);c.fill(area)
+    let zoom=CGFloat(1+0.035*smooth(elapsed/6))
+    let scale=min(area.width/CGFloat(image.width),area.height/CGFloat(image.height))*zoom
+    let target=CGRect(x:area.midX-CGFloat(image.width)*scale/2,y:area.midY-CGFloat(image.height)*scale/2,width:CGFloat(image.width)*scale,height:CGFloat(image.height)*scale)
+    c.draw(image,in:target)
+    if let pointer=shot.pointer, pointer.count==2 {
+        let progress=CGFloat(ease(elapsed/1.8))
+        let x=target.minX+CGFloat(pointer[0])*target.width+(1-progress)*100
+        let y=target.maxY-CGFloat(pointer[1])*target.height+(1-progress)*45
+        let pulse=CGFloat((elapsed.truncatingRemainder(dividingBy:1.8))/1.8)
+        c.setStrokeColor(cg(orange,Double(1-pulse)*0.8));c.setLineWidth(3)
+        c.strokeEllipse(in:CGRect(x:x-10-pulse*22,y:y-10-pulse*22,width:20+pulse*44,height:20+pulse*44))
+        let cursor=CGMutablePath();cursor.move(to:CGPoint(x:x,y:y));cursor.addLine(to:CGPoint(x:x+8,y:y-30));cursor.addLine(to:CGPoint(x:x+15,y:y-19));cursor.addLine(to:CGPoint(x:x+29,y:y-19));cursor.closeSubpath()
+        c.setFillColor(orange.cgColor);c.addPath(cursor);c.fillPath()
+    }
+    c.restoreGState()
+    txt(c,"WEBSITE CAPTURE · FICTIONAL TUTORIAL DATA",80,221,12,1100,20,lilac,.semibold,.left,1,1)
+    txt(c,shot.detail,91,598,17,1400,25,orange,.semibold)
+    return true
+}
 func caspy(_ c:CGContext,_ x:CGFloat,_ y:CGFloat,_ width:CGFloat,_ height:CGFloat,_ t:Double) {
     let scale=min(width/CGFloat(character.width),height/CGFloat(character.height));let bob=CGFloat(sin(t*1.65))*13
     c.saveGState();c.translateBy(x:x+width/2,y:H-y-height/2+bob);c.rotate(by:CGFloat(sin(t*0.85))*0.035);c.setShadow(offset:CGSize(width:0,height:-12),blur:35,color:cg(ink,0.25));c.draw(character,in:CGRect(x:-CGFloat(character.width)*scale/2,y:-CGFloat(character.height)*scale/2,width:CGFloat(character.width)*scale,height:CGFloat(character.height)*scale));c.restoreGState()
@@ -118,6 +164,7 @@ func bodyCard(_ c:CGContext,_ scene:Scene,_ t:Double,_ index:Int) {
 func scene(_ c:CGContext,_ index:Int,_ t:Double) {
     let s=scenes[index]
     txt(c,s.kicker,78,131,17,1440,35,lilac,.semibold,.left,1,2.1)
+    if websiteScene(c,s.id,t) { bodyCard(c,s,t,index);return }
     switch s.id {
     case "welcome","ready":
         headline(c,s.headline,t,75,214,79,1030)
@@ -223,6 +270,11 @@ func jpeg(_ buffer:CVPixelBuffer,_ name:String) {
     CGImageDestinationAddImage(destination,cgImage,[kCGImageDestinationLossyCompressionQuality:0.93] as CFDictionary);CGImageDestinationFinalize(destination)
 }
 for i in scenes.indices { jpeg(frame(starts[i]+min(4.5,Double(scenes[i].seconds)-1)),"preview-\(i).jpg") }
+for (i,shot) in websiteShots.enumerated() {
+    if let sceneIndex=scenes.firstIndex(where:{$0.id==shot.scene}) {
+        jpeg(frame(starts[sceneIndex]+min(shot.at+1.5,Double(scenes[sceneIndex].seconds)-0.5)),"website-preview-\(i).jpg")
+    }
+}
 jpeg(frame(3),"caspy-showcase-poster.jpg")
 print("Rendered \(scenes.count) scene previews.");fflush(stdout)
 func stamp(_ seconds:Double)->String { let ms=Int(seconds*1000);return String(format:"%02d:%02d:%02d.%03d",ms/3600000,(ms/60000)%60,(ms/1000)%60,ms%1000) }

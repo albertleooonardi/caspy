@@ -115,12 +115,10 @@ def initialize(root, update_config=False):
         print("Existing data/config.json preserved. Use init --update-config to back up and replace it.")
         return
     config = json.loads((root / "bifrost.config.example.json").read_text())
-    for store, filename in [("config_store", "caspy-bifrost.db"), ("logs_store", "caspy-bifrost-logs.db")]:
-        config[store]["config"]["path"] = str((root / "data" / filename).resolve())
     if target.exists():
         backup = target.with_name(f"config.{secrets.token_hex(6)}.backup.json")
         private_write(backup, target.read_text())
-        print(f"Existing configuration backed up to data/{backup.name}; SQLite state preserved.")
+        print(f"Existing configuration backed up to data/{backup.name}; existing database state preserved.")
     private_write(target, json.dumps(config, indent=2) + "\n")
     print("Wrote data/config.json with actor/judge routing and budget ownership.")
 

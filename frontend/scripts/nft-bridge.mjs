@@ -21,6 +21,28 @@ export async function execute(input) {
     return { ready:true };
   }
   if(action==='info') return { contract,market:config.market,max_supply:Number(await read('maxSupply')),minted:Number(await read('totalMinted')) };
+  if(action==='history') {
+    const head=await client.getBlockNumber();
+    const logs=(await client.getContractEvents({ address:getAddress(config.market),abi:marketAbi,eventName:'CandySold',fromBlock:BigInt(config.deployment_block),toBlock:head,strict:true }))
+      .filter(log=>!log.removed && log.blockNumber!==null)
+      .sort((a,b)=>a.blockNumber===b.blockNumber ? a.logIndex-b.logIndex : a.blockNumber<b.blockNumber ? -1:1);
+    const selected=logs.slice(-1000), blocks=new Map();
+    const numbers=[...new Set(selected.map(log=>String(log.blockNumber)))];
+    for(let start=0;start<numbers.length;start+=16) {
+      await Promise.all(numbers.slice(start,start+16).map(async number=>{
+        blocks.set(number,await client.getBlock({blockNumber:BigInt(number)}));
+      }));
+    }
+    return {
+      chain_id:31337,contract,market:config.market,scanned_to_block:String(head),
+      deployment_block:String(config.deployment_block),deployment_block_hash:config.deployment_block_hash,
+      total_sales:logs.length,truncated:logs.length>selected.length,
+      sales:selected.map(log=>({ token_id:String(log.args.tokenId),listing_id:String(log.args.listingId),
+        price_wei:String(log.args.price),seller:log.args.seller,buyer:log.args.buyer,
+        timestamp:Number(blocks.get(String(log.blockNumber)).timestamp),
+        block_number:String(log.blockNumber),log_index:log.logIndex,transaction_hash:log.transactionHash })),
+    };
+  }
   if(action==='verify') {
     const parsed=parseSiweMessage(input.message), age=Date.now()-parsed.issuedAt?.getTime();
     if(!validateSiweMessage({ message:parsed,address:input.address,domain:input.domain,nonce:input.nonce }) || parsed.chainId!==31337 || parsed.version!=='1' || parsed.uri!==input.origin || !Number.isFinite(age) || age < -60000 || age>300000) throw new Error('Invalid sign-in.');

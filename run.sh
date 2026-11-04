@@ -9,11 +9,11 @@ case "${1:-}" in
   ''|--nft) ;;
   --ai-only) NFT_MODE=false ;;
   --help|-h)
-    echo 'Usage: bash run-heist.sh [--ai-only | --nft]'
+    echo 'Usage: bash run.sh [--ai-only | --nft]'
     echo 'Default: frontend + local Anvil blockchain/NFTs + Bifrost + game API.'
     echo '--ai-only: frontend + Bifrost + game API, without blockchain or NFT claims.'
     exit 0 ;;
-  *) echo 'Usage: bash run-heist.sh [--ai-only | --nft]' >&2; exit 1 ;;
+  *) echo 'Usage: bash run.sh [--ai-only | --nft]' >&2; exit 1 ;;
 esac
 if [ "$#" -gt 1 ]; then echo 'Provide at most one option. Use --help for usage.' >&2; exit 1; fi
 command -v python3 >/dev/null 2>&1 || { echo 'Python 3 is required.' >&2; exit 1; }
@@ -33,6 +33,12 @@ command -v npm >/dev/null 2>&1 || { echo 'Node.js and npm are required.' >&2; ex
 [ "$(node -p 'process.versions.node.split(".")[0]')" -ge 22 ] || { echo 'Node.js 22 or later is required.' >&2; exit 1; }
 command -v curl >/dev/null 2>&1 || { echo 'curl is required.' >&2; exit 1; }
 command -v bifrost >/dev/null 2>&1 || { echo 'Install Bifrost: npm install -g @maximhq/bifrost' >&2; exit 1; }
+# PostgreSQL is mandatory at runtime; never fall back to a local SQLite file.
+[ -x .venv/bin/python ] || python3 -m venv .venv
+if ! .venv/bin/python -c 'import psycopg; assert psycopg.__version__ == "3.2.13"' >/dev/null 2>&1; then
+  .venv/bin/python -m pip install -r scripts/requirements-database.txt
+fi
+.venv/bin/python scripts/check_supabase.py
 python3 scripts/bifrost_setup.py check
 
 # Refuse conflicting app instances before starting any services.
@@ -109,7 +115,7 @@ PY
       .venv/bin/python -m pip install -r scripts/requirements-candy.txt
     fi
   fi
-  if [ ! -f data/flux/ready.json ]; then echo 'Local candy images need one-time setup: bash setup-flux.sh (unless using hf-dev).'; fi
+  if [ ! -f data/flux/ready.json ]; then echo 'Local candy images need one-time setup: bash scripts/shell/setup-flux.sh (unless using hf-dev).'; fi
   echo 'Preparing local blockchain and NFT contract...'
   if [ ! -x blockhain/node_modules/.bin/anvil ] || [ ! -x blockhain/node_modules/.bin/forge ]; then (cd blockhain && npm ci); fi
   if [ ! -f blockhain/lib/forge-std/src/Test.sol ]; then
@@ -135,13 +141,13 @@ fi
 
 BIFROST_PID=''
 if ! curl --noproxy '*' -fsS http://127.0.0.1:8080/health >/dev/null 2>&1; then
-  bash run-bifrost.sh &
+  bash scripts/shell/run-bifrost.sh &
   BIFROST_PID=$!
   pids+=("$BIFROST_PID"); names+=('Bifrost')
 fi
 wait_for_service 'Bifrost' 'http://127.0.0.1:8080/health' "$BIFROST_PID"
 
-python3 scripts/heist_api.py &
+.venv/bin/python scripts/heist_api.py &
 API_PID=$!
 pids+=("$API_PID"); names+=('Game API')
 wait_for_service 'Game API' 'http://127.0.0.1:8000/health' "$API_PID"
@@ -155,6 +161,8 @@ pids+=("$FRONTEND_PID"); names+=('Frontend')
 wait_for_service 'Frontend' 'http://127.0.0.1:4321/play' "$FRONTEND_PID"
 echo 'Caspy is ready: http://localhost:4321/play'
 echo 'Bifrost dashboard: http://127.0.0.1:8080'
+echo 'Database: Supabase PostgreSQL (private Caspy + Bifrost schemas)'
+echo 'Candy images: generated on demand after a confirmed win.'
 echo 'Press Ctrl+C to stop the services this launcher started.'
 
 # Bash 3.2 (macOS) has no wait -n; monitor every managed service explicitly.

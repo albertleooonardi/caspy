@@ -64,6 +64,6 @@ a calibrated persuasion benchmark.
 Enable billing or add Inference Providers credits at
 [Hugging Face billing](https://huggingface.co/settings/billing). Do not create a
 new token solely for this 402: the configured token authenticated successfully.
-After billing is ready, restart `bash run-heist.sh` and run one explicit image
+After billing is ready, restart `bash run.sh` and run one explicit image
 request. A full real candy mint/sale QA pass also needs a legitimately eligible
 winning heist. All blockchain operations remain local test assets.

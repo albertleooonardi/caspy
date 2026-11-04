@@ -31,14 +31,14 @@ sessions and permissions are enforced by the server. See
 
 ## Demo mode
 
-For the full **local NFT game**, run `bash run-heist.sh` from the root.
+For the full **local NFT game**, run `bash run.sh` from the root.
 Connect the local test wallet, play against the Bifrost actor/judge, then mint
 the server-confirmed result on Anvil (31337). The launcher provides
 `PUBLIC_NFT_ENABLED=true`, `PUBLIC_CONTRACT_ADDRESS` and `PUBLIC_NFT_SEASON` to
 Astro. No browser extension or private key is needed. See
 [the local NFT guide](../docs/nft-local.md).
 
-For AI-only gameplay without NFT claims, run `bash run-heist.sh --ai-only`
+For AI-only gameplay without NFT claims, run `bash run.sh --ai-only`
 from the repository root. Or run `python3 scripts/heist_api.py` from the root
 alongside Bifrost, set `PUBLIC_LOCAL_AI=true` in `frontend/.env`, and restart
 `npm run dev`. The same-origin `/api` development proxy connects to port 8000.

@@ -57,7 +57,7 @@ class GatewaySetupTests(unittest.TestCase):
         self.assertEqual((self.root / ".env").read_bytes(), env_before)
         self.assertEqual(json.loads(target.read_text()), {"custom": True})
 
-    def test_explicit_update_backs_up_config_and_leaves_sqlite_untouched(self):
+    def test_explicit_update_backs_up_config_and_preserves_existing_state(self):
         target = self.root / "data/config.json"
         before = target.read_bytes()
         state = self.root / "data/caspy-bifrost.db"
@@ -68,7 +68,9 @@ class GatewaySetupTests(unittest.TestCase):
         self.assertEqual(backups[0].read_bytes(), before)
         self.assertEqual(backups[0].stat().st_mode & 0o777, 0o600)
         self.assertEqual(state.read_bytes(), b"existing database placeholder")
-        self.assertTrue(Path(self.config["config_store"]["config"]["path"]).is_absolute())
+        self.assertEqual(self.config["config_store"]["type"], "postgres")
+        self.assertEqual(self.config["logs_store"]["type"], "postgres")
+        self.assertNotIn("path", self.config["config_store"]["config"])
 
     def test_process_environment_overrides_file_without_rewriting_provider_key(self):
         with patch.dict(os.environ, {"GROQ_API_KEY": "process-value"}):

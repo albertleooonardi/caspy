@@ -19,7 +19,7 @@ class LocalNFT:
         self.config = config or json.loads(Path(os.environ.get('CASPY_NFT_CONFIG', ROOT / 'data/nft-local.json')).read_text())
         self.node = shutil.which('node')
         if not self.node:
-            raise RuntimeError('Use bash run-heist.sh --nft so Node is on PATH.')
+            raise RuntimeError('Use bash run.sh --nft so Node is on PATH.')
         self.auth = {}
         self.challenges = {}
         self.lock = threading.Lock()
