@@ -5,6 +5,7 @@ const task = process.argv.find(arg => ['dev', 'build', 'check', 'preview', 'sync
 
 export default defineConfig({
   integrations: [react()], output: 'static',
+  devToolbar: { enabled: false },
   vite: {
     // Builds and Astro checks must not replace an active dev server's modules.
     cacheDir: `node_modules/.vite-${task}`,

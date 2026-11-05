@@ -14,7 +14,7 @@ export default function PriceHistory({tokens,revision=0}:{tokens:{token_id:strin
   const id=useId();
   useEffect(()=>{
     let active=true;setLoading(true);setError('');
-    request<SaleHistory>('/market/history').then(value=>{if(active){setHistory(value);setNow(Math.floor(Date.now()/1000));}})
+    request<SaleHistory>('/market/history').then(value=>{if(active){setHistory(value);setSelected(null);setNow(Math.floor(Date.now()/1000));}})
       .catch(e=>{if(active)setError(e instanceof Error?e.message:'Price history could not load.');})
       .finally(()=>{if(active)setLoading(false);});
     return ()=>{active=false;};
@@ -30,13 +30,13 @@ export default function PriceHistory({tokens,revision=0}:{tokens:{token_id:strin
     {error?<p className="error" role="alert">{error} Refresh to retry. The marketplace can still be browsed.</p>:loading?<p role="status">Reading confirmed marketplace events…</p>:!sales.length?<div className="price-history-empty"><h3>No completed sales {token==='all'?'yet':'for this candy'}{days?' in this period':''}.</h3><p>A sale appears after a purchase confirms. Minting or listing alone does not establish a price.</p></div>:<>
       <dl className="price-history-stats"><div><dt>Completed trades</dt><dd>{summary.count}</dd></div><div><dt>Latest {token==='all'?'collection ':''}sale</dt><dd>{eth(summary.latest!)} <small>test ETH</small></dd></div><div><dt>Traded volume</dt><dd>{eth(summary.volume)} <small>test ETH</small></dd></div></dl>
       <p className="price-history-explanation">{token==='all'?'Each dot is a sale of a potentially different candy. Select one candy to see its price path.':'Each point is this candy’s actual sale price. Lines connect observed trades; they do not estimate prices between them.'} All dates use UTC.</p>
-      <div className="price-history-chart"><svg viewBox="0 0 1000 320" role="group" aria-label="Completed sale prices. Focus a point for exact details.">
+      <div className="price-history-chart" tabIndex={0} role="region" aria-label="Sale price chart. Scroll horizontally on small screens."><svg viewBox="0 0 1000 320" role="group" aria-label="Completed sale prices. Focus a point for exact details.">
         <line x1="68" y1="255" x2="932" y2="255" className="price-axis"/><line x1="68" y1="55" x2="68" y2="255" className="price-axis"/>
         <text x="68" y="35">High: {eth(high!)} test ETH</text><text x="68" y="282">Low: {eth(low!)} test ETH</text>
         {token!=='all'&&points.length>1&&<polyline points={points.map(p=>`${p.x},${p.y}`).join(' ')} className="price-line"/>}
-        {points.map((point,index)=><circle key={`${point.sale.transaction_hash}:${point.sale.log_index}`} cx={point.x} cy={point.y} r={index===selected?9:6} className="price-point" tabIndex={0} role="button"
+        {points.map((point,index)=><g key={`${point.sale.transaction_hash}:${point.sale.log_index}`} className="price-point-target" tabIndex={0} role="button"
           aria-label={`Candy ${point.sale.token_id}: ${point.sale.price_wei} wei, ${date(point.sale.timestamp)}. Press Enter for details.`}
-          onFocus={()=>setSelected(index)} onMouseEnter={()=>setSelected(index)} onClick={()=>setSelected(index)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setSelected(index);}}}><title>{eth(BigInt(point.sale.price_wei))} test ETH · {date(point.sale.timestamp)}</title></circle>)}
+          onFocus={()=>setSelected(index)} onMouseEnter={()=>setSelected(index)} onClick={()=>setSelected(index)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setSelected(index);}}}><circle cx={point.x} cy={point.y} r={26} className="price-hit"/><circle cx={point.x} cy={point.y} r={index===selected?10:7} className="price-point"/><title>{eth(BigInt(point.sale.price_wei))} test ETH · {date(point.sale.timestamp)}</title></g>)}
         <text x="68" y="310">{new Date(sales[0].timestamp*1000).toISOString().slice(0,10)}</text><text x="932" y="310" textAnchor="end">{new Date(sales[sales.length-1].timestamp*1000).toISOString().slice(0,10)}</text>
       </svg></div>
       <p className="price-history-detail" role="status">{focus?<>Candy #{focus.token_id} · {eth(BigInt(focus.price_wei))} test ETH ({focus.price_wei} wei) · {date(focus.timestamp)} · Block {focus.block_number} · Transaction <code>{focus.transaction_hash}</code></>:'Hover, tap or focus a point to inspect its exact recorded price and transaction.'}</p>

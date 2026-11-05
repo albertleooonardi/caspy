@@ -189,6 +189,13 @@ class NFTIntegration(unittest.TestCase):
         self.assertGreater(sale['timestamp'],0)
         self.assertEqual(self.api('/candy/prompt/'+status['token_id'])['prompt'],'A clever ghost bakery trade.')
         self.assertEqual(self.api('/candy/collection')['tokens'][0]['owner'].lower(),buyer.lower())
+        # A resale asking price and its cancellation never become recorded sales.
+        self.driver('write',contract=self.config['contract'],function_name='approve',args=[self.config['market'],status['token_id']])
+        self.driver('write',contract=self.config['market'],market=True,function_name='list',args=[status['token_id'],'2000'])
+        resale=self.api('/market/listings')['listings'][0]
+        self.assertEqual(self.api('/market/history')['sales'],history['sales'])
+        self.driver('write',contract=self.config['market'],market=True,function_name='cancel',args=[resale['listing_id']])
+        self.assertEqual(self.api('/market/history')['sales'],history['sales'])
         self.account=seller
         # Restore the original authenticated account cookies for the access regression below.
         self.cookie,self.cookies=seller_cookie,seller_cookies

@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import '../styles/experience.css';
 const { title = 'Caspy’s Prompt Heist — A little charm. A little mischief.' } = Astro.props;
 ---
 <!doctype html>
@@ -13,6 +14,8 @@ const { title = 'Caspy’s Prompt Heist — A little charm. A little mischief.' 
     <meta property="og:description" content="Three prompts. One stubborn ghost. Your sweetest heist yet." />
     <meta property="og:image" content="/images/logo.jpg" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/fonts/dm-sans.ttf" as="font" type="font/ttf" crossorigin="anonymous" />
+    <link rel="preload" href="/fonts/space-grotesk.ttf" as="font" type="font/ttf" crossorigin="anonymous" />
     <title>{title}</title>
   </head>
   <body><slot /></body>

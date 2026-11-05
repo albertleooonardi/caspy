@@ -195,10 +195,11 @@ Next priorities, in order:
    frontend 4321, API 8000 and Bifrost 8080 health returned HTTP 200.
 2. `/candy/config` reports local FLUX.1-schnell, `generation_local: true`,
    `configured: true`. Runtime activation is verified; a fresh end-to-end
-   render/mint still needs a genuinely eligible live win.
-3. Complete a real eligible heist → local art → voucher → mint → collection →
-   listing → purchase → private prompt-access check. Fixture chain tests and
-   staged tutorial screenshots do not replace that end-to-end validation.
+   render/mint was subsequently verified in Chrome on 5 November (S/92, token #1).
+3. Real eligible heist → local art retry → mint → collection → listing →
+   user-executed purchase → private prompt ownership checks passed in Chrome on
+   5 November. Real sale history displayed 0.01 test ETH. Seller payout remains
+   unverified (0.01 test ETH still credited after user reports); see the dated QA report for remaining coverage.
 4. Fix/calibrate judge category/flag consistency. One benign declined story was
    labeled `exploit_attempt` while `exploit_flag` was false. Preserve reward gates;
    do not loosen them to make a test win.
@@ -237,4 +238,31 @@ into the live marketplace to make the chart look populated.
 
 Chrome QA confirms local NFT mode currently uses unlocked Anvil RPC accounts,
 not the MetaMask extension. Do not claim MetaMask integration has passed. See
-`docs/qa-report-2026-11-04.md` for dated evidence and remaining coverage.
+`docs/qa-report-2026-11-05.md` for dated evidence and remaining coverage.
+
+## Chrome QA continuation — 5 November
+
+See `docs/qa-report-2026-11-05.md` for evidence and limits. Dedicated fictional
+researcher account completed live Bifrost play (eligible YIELD, confidence 0.96;
+S/92), rating, human review, zero-price development dataset publication, catalog
+and owner JSON export. Export omits direct account/wallet/session identity fields.
+Walkthrough playback, pause, chapter seek and win-only quiz passed in Chrome.
+
+Real Schnell attempt one failed; explicit same-seed retry succeeded. Token #1
+minted, listed with user-approved prompt license, and was purchased by the separate
+player account. User executed purchase after automatic review required handoff.
+The live graph shows the actual 0.01 test-ETH sale; filtered multi-sale graph
+controls also passed with an isolated fictional fixture. Buyer prompt access
+unlocked; seller access was denied after transfer. Seller is credited 0.01 test
+ETH; final payout remains unverified: readback still shows the full credit
+after user-reported confirmations. Do not claim payout success without a
+matching transaction and zero credited balance.
+
+Approved fictional research withdrawal blocked future owner exports and removed
+the empty release from the catalog, preserving the NFT and sale. Cross-workspace
+researcher grant flows remain fixture-tested rather than Chrome-verified.
+MetaMask is bypassed by the current local wallet implementation; do not claim
+extension signing passed. Intermittent blank Chrome route rendering and local
+render reliability remain open findings. The temporary graph fixture server on
+18889 was stopped; user app servers remain user-managed. Never insert fictional
+fixture sales into live history.
