@@ -63,6 +63,21 @@ class PlatformHTTPTests(unittest.TestCase):
         self.request(client,'/account/register',{'name':name,'email':name+'@example.test','password':'testing-password-123','account_type':role,'organization':name+' lab','terms_accepted':True})
         return client
 
+    def test_hosted_origin_and_secure_cookie_without_forwarded_header_trust(self):
+        self.server.allowed_origins=('https://caspy.example',)
+        self.server.secure_cookies=True
+        client=self.client()
+        self.request(client,'/account/register',{},status=403)
+        body={'name':'Hosted Player','email':'hosted@example.test','password':'testing-password-123','terms_accepted':True}
+        conn=http.client.HTTPConnection('127.0.0.1',self.server.server_port,timeout=30)
+        conn.request('POST','/account/register',json.dumps(body),{'Content-Type':'application/json','Origin':'https://caspy.example','Idempotency-Key':'hosted-registration'})
+        response=conn.getresponse()
+        self.assertEqual(response.status,200)
+        cookies=[value for key,value in response.getheaders() if key.lower()=='set-cookie']
+        self.assertTrue(cookies)
+        self.assertTrue(all('; Secure' in value and 'HttpOnly' in value for value in cookies))
+        response.read();conn.close()
+
     def test_authentication_csrf_and_server_authorization(self):
         anonymous=self.client()
         self.request(anonymous,'/game/session',{},status=401)

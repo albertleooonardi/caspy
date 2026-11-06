@@ -232,7 +232,7 @@ class Platform:
 
     def decorate(self, game, user):
         link = self.owns_game(user, game['id'])
-        return {**game, 'research_consent': bool(link['research'] and not link['withdrawn']), 'commercial_consent': bool(link['commercial'] and not link['withdrawn']), 'campaign_id': link['campaign_id']}
+        return {**game, 'unlimited_heists': user['role'] == 'contributor', 'research_consent': bool(link['research'] and not link['withdrawn']), 'commercial_consent': bool(link['commercial'] and not link['withdrawn']), 'campaign_id': link['campaign_id']}
 
     def capture(self, game):
         with self.db() as db:

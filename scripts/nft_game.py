@@ -42,8 +42,8 @@ class LocalNFT:
 
     def nonce(self, token, body, origin):
         address = body.get('address', '')
-        if not isinstance(address, str) or not re.fullmatch(r'0x[0-9a-fA-F]{40}', address) or body.get('chain_id') != 31337:
-            raise ValueError('Connect a local chain 31337 wallet.')
+        if not isinstance(address, str) or not re.fullmatch(r'0x[0-9a-fA-F]{40}', address) or body.get('chain_id') != self.config['chain_id']:
+            raise ValueError('Connect a wallet on the configured candy chain.')
         with self.lock:
             now = time.time()
             self.challenges = {k: v for k, v in self.challenges.items() if v['expires'] > now}

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Loopback-only Caspy game API, with optional local-chain wallet/NFT mode."""
+"""Caspy game API: local defaults and explicit HTTPS/Base Sepolia deployment mode."""
 import copy
 import hashlib
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import os
 import re
 import secrets
 import threading
@@ -15,8 +16,14 @@ from bifrost_setup import check, resolve, route, validate_verdict, VERDICT_SCHEM
 from pathlib import Path
 from platform_store import Platform, Fault
 from candy_rules import CANDY_VERDICT_SCHEMA, validate_candy_verdict
+from runtime_config import server_settings
 
 ROOT = Path(__file__).resolve().parents[1]
+
+def next_daily_reset(created):
+    """Next midnight in Jakarta (UTC+7), independent of the host timezone."""
+    return (int(created + 7 * 3600) // 86400 + 1) * 86400 - 7 * 3600
+
 ACTOR = """You are Caspy, a cute, stubborn Halloween ghost guarding your candy.
 The human has three chances to persuade you. Reply briefly (1-3 sentences), in
 character, responding specifically to their pitch. Start reluctant. You may
@@ -124,8 +131,10 @@ class Games:
         self.sessions = {}
         self.lock = threading.RLock()
         self.store = store
-        if store and store.exists():
-            for ident, entry in json.loads(store.read_text()).items():
+        saved = store.load() if hasattr(store, 'load') else json.loads(store.read_text()) if store and store.exists() else {}
+        if saved:
+            for ident, entry in saved.items():
+                entry['data']['next_reset_at'] = next_daily_reset(entry['created'])
                 entry['lock'] = threading.Lock()
                 entry['requests'] = set(entry['requests'])
                 if entry.get('in_flight'):
@@ -138,7 +147,10 @@ class Games:
             with self.lock:
                 snapshot = {k: {**{name: value for name, value in entry.items() if name not in ('lock', 'requests')},
                                'requests': sorted(entry['requests'])} for k, entry in self.sessions.items()}
-                private_write(self.store, json.dumps(snapshot))
+                if hasattr(self.store, 'save'):
+                    self.store.save(snapshot)
+                else:
+                    private_write(self.store, json.dumps(snapshot))
 
     def prune(self):
         if self.store:
@@ -147,18 +159,31 @@ class Games:
             now = time.time()
             self.sessions = {k: v for k, v in self.sessions.items() if now - v['created'] < 21600}
 
-    def create(self, owner):
+    def create(self, owner, unlimited=False):
         with self.lock:
             # Bound memory and development gateway usage. Sessions expire after 6 hours.
             now = time.time()
             if not self.store:
                 self.sessions = {k: v for k, v in self.sessions.items() if now - v['created'] < 21600}
-            existing = [v for v in self.sessions.values() if v['owner'] == owner]
-            if existing and (self.store or existing[-1]['data']['status'] == 'active'):
-                return copy.deepcopy(existing[-1]['data'])
-            if len(self.sessions) >= 100 or len(existing) >= 20:
+            existing = sorted((v for v in self.sessions.values() if v['owner'] == owner), key=lambda v: v['created'])
+            if existing:
+                latest = existing[-1]
+                if self.store:
+                    # Keep rewards claimable and never abandon an unresolved/in-flight turn.
+                    protected_statuses = ('active', 'pending_review') if unlimited else ('active', 'pending_review', 'won')
+                    protected = next((v for v in existing if v['data']['status'] in protected_statuses or v.get('in_flight')), None)
+                    if protected:
+                        return copy.deepcopy(protected['data'])
+                    if not unlimited and now < next_daily_reset(latest['created']):
+                        return copy.deepcopy(latest['data'])
+                elif latest['data']['status'] == 'active':
+                    return copy.deepcopy(latest['data'])
+            daily_count = sum(next_daily_reset(v['created']) > now for v in self.sessions.values())
+            if not unlimited and ((self.store and daily_count >= 100) or (not self.store and (len(self.sessions) >= 100 or len(existing) >= 20))):
                 raise ValueError('Local session limit reached.')
             data = dict(id=secrets.token_urlsafe(24), status='active', attempts_remaining=3, messages=[])
+            if self.store:
+                data['next_reset_at'] = next_daily_reset(now)
             self.sessions[data['id']] = dict(owner=owner, data=data, lock=threading.Lock(),
                                               requests=set(), created=now)
             self.persist()
@@ -287,6 +312,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def set_cookie(self, owner):
         self.cookie = f'caspy_local={owner}; HttpOnly; SameSite=Strict; Path=/api; Max-Age=21600'
+        if getattr(self.server, 'secure_cookies', False):
+            self.cookie += '; Secure'
 
     def json_response(self, status, data):
         body = json.dumps(data).encode()
@@ -297,14 +324,15 @@ class Handler(BaseHTTPRequestHandler):
         if hasattr(self, 'cookie'):
             self.send_header('Set-Cookie', self.cookie)
         if hasattr(self, 'account_cookie'):
-            self.send_header('Set-Cookie', self.account_cookie)
+            self.send_header('Set-Cookie', self.account_cookie + ('; Secure' if getattr(self.server, 'secure_cookies', False) else ''))
         self.end_headers()
         self.wfile.write(body)
 
     def do_GET(self):
         nft = self.server.nft
         if self.path == '/health':
-            self.json_response(200, {'status': 'ok', 'mode': 'local-nft' if nft else 'local-ai', 'minting': bool(nft)})
+            self.json_response(200, {'status': 'ok', 'mode': 'testnet-nft' if nft and nft.config['chain_id']==84532 else 'local-nft' if nft else 'local-ai', 'minting': bool(nft),
+                'chain_id':nft.config['chain_id'] if nft else None,'commit':os.environ.get('RENDER_GIT_COMMIT') or os.environ.get('RAILWAY_GIT_COMMIT_SHA') or None})
             return
         try:
             platform = getattr(self.server, 'platform', None)
@@ -354,6 +382,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.json_response(200, candy.owned_prompt(ident, wallet))
                 return
             if nft and platform and self.path == '/auth/local-wallets':
+                if nft.config['chain_id'] != 31337:
+                    raise Fault(404, 'Use your browser wallet on Base Sepolia.')
                 self.json_response(200, {'wallets': platform.available_wallets(user, nft.call('wallets')['wallets'])})
                 return
             if nft and self.path == '/auth/me':
@@ -403,8 +433,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         origin = self.headers.get('Origin', '')
-        if origin not in ('http://localhost:4321', 'http://127.0.0.1:4321'):
-            self.json_response(403, {'detail': 'Use the local frontend on port 4321.'})
+        if origin not in getattr(self.server, 'allowed_origins', ('http://localhost:4321', 'http://127.0.0.1:4321')):
+            self.json_response(403, {'detail': 'Use the configured Caspy website origin.'})
             return
         streaming = False
         try:
@@ -467,7 +497,8 @@ class Handler(BaseHTTPRequestHandler):
             elif platform:
                 owner = 'account:'+user['id']
             if self.path == '/game/session':
-                game = self.server.games.create(owner)
+                # Entitlement comes from the authenticated account, never request fields.
+                game = self.server.games.create(owner, unlimited=bool(user and user['role'] == 'contributor'))
                 self.json_response(200, platform.associate_game(user, game, body) if platform else game)
                 return
             if self.path == '/game/review':
@@ -529,16 +560,26 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    server = ThreadingHTTPServer(('127.0.0.1', 8000), Handler)
+    env = environment(ROOT)
+    settings = server_settings(env)
+    server = ThreadingHTTPServer(settings['address'], Handler)
+    server.allowed_origins = settings['origins']
+    server.secure_cookies = settings['secure_cookies']
     server.nft = None
     store = None
     if environment(ROOT).get('CASPY_NFT_ENABLED') == 'true':
         from nft_game import LocalNFT
         server.nft = LocalNFT()
+        if settings['production'] and server.nft.config['chain_id'] != 84532:
+            raise ValueError('Public NFT deployment requires Base Sepolia; never expose unlocked Anvil wallets.')
         store = ROOT / f"data/nft-games-{server.nft.config['contract'].lower()}-{server.nft.config['deployment_block_hash'][2:14]}.json"
     gateway = Gateway()
     from database import database_url
     server.platform = Platform(database_url(environment(ROOT)), gateway.evaluation_metadata())
+    if settings['production'] and server.nft:
+        from cloud_storage import DatabaseSnapshots
+        config = server.nft.config
+        store = DatabaseSnapshots(server.platform, f"{config['chain_id']}:{config['contract'].lower()}:{config['deployment_block_hash']}")
     server.games = Games(gateway, store)
     server.candy = None
     if server.nft:
@@ -549,7 +590,7 @@ def main():
         server.games.prune()
         server.platform.purge()
     server.service_actions = maintenance
-    print('Caspy game API: http://127.0.0.1:8000 (' + ('local-chain NFTs enabled' if server.nft else 'AI playground, no minting') + ')', flush=True)
+    print('Caspy game API ready (' + ('NFT chain '+str(server.nft.config['chain_id']) if server.nft else 'AI playground, no minting') + ')', flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

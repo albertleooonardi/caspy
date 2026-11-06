@@ -16,6 +16,7 @@ from platform_store import Platform
 import test_platform_store
 import test_candy_store
 import test_platform_http
+import test_cloud_storage
 
 
 class SupabaseFixture:
@@ -27,7 +28,7 @@ class SupabaseFixture:
             connection.execute(sql.SQL('REVOKE ALL ON SCHEMA {} FROM PUBLIC, anon, authenticated').format(sql.Identifier(self.schema)))
         self.addCleanup(self.drop_schema)
         factory=lambda target,*args,**kwargs: Platform(self.dsn,*args,schema=self.schema,**kwargs)
-        for module in (test_platform_store,test_candy_store,test_platform_http):
+        for module in (test_platform_store,test_candy_store,test_platform_http,test_cloud_storage):
             context=patch.object(module,'Platform',factory)
             context.start();self.addCleanup(context.stop)
         super().setUp()
@@ -47,3 +48,6 @@ class SupabaseCandyTests(SupabaseFixture,test_candy_store.CandyTests): pass
 
 @unittest.skipUnless(enabled and os.environ.get('CASPY_RUN_HTTP_TESTS')=='1','Opt in to live Supabase HTTP tests.')
 class SupabaseHTTPTests(SupabaseFixture,test_platform_http.PlatformHTTPTests): pass
+
+@unittest.skipUnless(enabled,'Opt in to live Supabase cloud storage fixtures.')
+class SupabaseCloudStorageTests(SupabaseFixture,test_cloud_storage.CloudStorageTests): pass

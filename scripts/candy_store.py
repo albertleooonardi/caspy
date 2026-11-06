@@ -16,6 +16,8 @@ from bifrost_setup import environment
 from candy_rules import MODEL, normalized, score_prompt
 from candy_art import STYLE_VERSION, candy_prompt
 from local_flux import LocalSchnell
+from space_schnell import SpaceSchnell
+from runtime_config import public_origin
 from platform_store import Fault, redact
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -48,16 +50,23 @@ class HostedFlux:
 class CandyStore:
     def __init__(self,platform,nft,root=None,renderer=None):
         self.platform,self.nft=platform,nft
+        self.origin=public_origin(environment(ROOT))
+        self.database_assets=environment(ROOT).get('CASPY_ASSET_STORAGE')=='postgres'
         self.root=Path(root or ROOT/'data/candy-assets');self.root.mkdir(parents=True,exist_ok=True)
         backend=environment(ROOT).get('CASPY_IMAGE_BACKEND','local-schnell')
-        if backend not in ('local-schnell','hf-dev'): raise ValueError('Choose CASPY_IMAGE_BACKEND=local-schnell or hf-dev.')
-        self.renderer=renderer or (LocalSchnell() if backend=='local-schnell' else HostedFlux())
+        if backend not in ('local-schnell','hf-dev','hf-space-schnell'): raise ValueError('Choose CASPY_IMAGE_BACKEND=local-schnell, hf-space-schnell or hf-dev.')
+        self.renderer=renderer or {'local-schnell':LocalSchnell,'hf-dev':HostedFlux,'hf-space-schnell':SpaceSchnell}[backend]()
         info=nft.call('info')
         self.cap=info['max_supply']
         self.namespace=f"{nft.config['chain_id']}:{nft.config['contract'].lower()}:{nft.config['deployment_block_hash']}"
         self.pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='caspy-flux')
         self.budget=max(1,min(1000,int(environment(ROOT).get('CASPY_FLUX_DAILY_LIMIT','10'))))
         with platform.db() as db:
+            if self.database_assets:
+                db.execute('CREATE TABLE IF NOT EXISTS candy_blobs(digest TEXT PRIMARY KEY,kind TEXT NOT NULL,content BYTEA NOT NULL)')
+                if platform.database.postgres:
+                    db.execute('ALTER TABLE candy_blobs ENABLE ROW LEVEL SECURITY')
+                    db.execute('REVOKE ALL ON candy_blobs FROM anon, authenticated')
             db.executescript('''
             CREATE TABLE IF NOT EXISTS candy_jobs(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,namespace TEXT NOT NULL,
                 wallet TEXT NOT NULL,prompt TEXT NOT NULL,prompt_hash TEXT NOT NULL,normalized TEXT NOT NULL,
@@ -67,7 +76,7 @@ class CandyStore:
             CREATE TABLE IF NOT EXISTS candy_attempts(job_id TEXT NOT NULL,created INTEGER NOT NULL);
             ''')
             # Never silently repeat a possibly billed request after a crash/restart.
-            db.execute("UPDATE candy_jobs SET state='uncertain',error='A prior image request was interrupted. Retry explicitly; hosted requests may use provider credits again.' WHERE state='generating'")
+            db.execute("UPDATE candy_jobs SET state='uncertain',error='A prior image request was interrupted. Retry explicitly; hosted requests may use provider credits again.' WHERE state='generating' AND namespace=?",(self.namespace,))
 
     def close(self): self.pool.shutdown(wait=True)
 
@@ -108,7 +117,7 @@ class CandyStore:
         return {'session_id':row['id'],'state':state,'assessment':assessment,'attempts':row['attempts'],
                 'image_url':f"/api/candy/images/{row['image_hash']}.png" if row['image_hash'] else None,
                 'metadata_uri':row['uri'],'prompt_hash':'0x'+row['prompt_hash'],'error':row['error'],
-                'generator_model':self.generator_model(row),'generation_local':self.generation_local(row),'seed':row['seed'],'minted':bool(row['token_id']),'token_id':row['token_id']}
+                'generator_model':self.generator_model(row),'generator_provider':getattr(self.renderer,'provider','unknown'),'generation_local':self.generation_local(row),'seed':row['seed'],'minted':bool(row['token_id']),'token_id':row['token_id']}
 
     def generation_local(self,row=None):
         if row and row['metadata_hash']:
@@ -126,7 +135,7 @@ class CandyStore:
         with self.platform.db() as db:
             reserved=db.execute('SELECT count(*) FROM candy_jobs WHERE namespace=?',(self.namespace,)).fetchone()[0]
             used=db.execute('SELECT count(*) FROM candy_attempts WHERE created>=?',(int(time.time())//86400*86400,)).fetchone()[0]
-        return {'enabled':True,'model':self.generator_model(),'generation_local':getattr(self.renderer,'local',False),'configured':self.renderer.configured,'max_supply':self.cap,
+        return {'enabled':True,'model':self.generator_model(),'provider':getattr(self.renderer,'provider','unknown'),'generation_local':getattr(self.renderer,'local',False),'configured':self.renderer.configured,'max_supply':self.cap,
                 'reserved':reserved,'remaining':max(0,self.cap-reserved),'daily_image_limit':self.budget,'image_requests_today':used,
                 'grades':[{'label':'C','minimum':0},{'label':'B','minimum':60},{'label':'A','minimum':75},{'label':'S','minimum':90}],
                 'market':self.nft.config['market'],'contract':self.nft.config['contract']}
@@ -163,13 +172,13 @@ class CandyStore:
                 self._write(self.root/(image_hash+'.png'),data)
                 manifest={'name':f"Caspy {assessment['grade_label']} Candy · {row['prompt_hash'][:8]}",
                     'description':'AI-generated candy earned by persuading Caspy. Grade is prompt-assessed, not randomly drawn. The source prompt is delivered only to the verified NFT owner.',
-                    'image':f'http://localhost:4321/api/candy/images/{image_hash}.png','ai_generated':True,
+                    'image':f'{self.origin}/api/candy/images/{image_hash}.png','ai_generated':True,
                     'generator':{'model':generated.get('model',MODEL),'provider':generated.get('provider','unknown'),'seed':row['seed'],**{key:generated.get(key) for key in ('steps','guidance_scale','width','height','runtime','safety_checker','quantization_bits','checkpoint','revision','prompt_processing','content_controls')},'art_style':STYLE_VERSION},
                     'source_prompt_sha256':row['prompt_hash'],'image_sha256':image_hash,'art_prompt_sha256':hashlib.sha256(art_prompt.encode()).hexdigest(),
                     'assessment':assessment,'attributes':[{'trait_type':'Grade','value':assessment['grade_label']},{'trait_type':'Prompt score','value':assessment['score']},{'trait_type':'Collection cap','value':self.cap}]}
                 raw=json.dumps(manifest,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()
                 metadata_hash=hashlib.sha256(raw).hexdigest();self._write(self.root/(metadata_hash+'.json'),raw)
-                uri=f'http://localhost:4321/api/candy/metadata/{metadata_hash}.json'
+                uri=f'{self.origin}/api/candy/metadata/{metadata_hash}.json'
                 with self.platform.db() as db: db.execute("UPDATE candy_jobs SET state='ready',image_hash=?,metadata_hash=?,uri=?,error=NULL WHERE id=?",(image_hash,metadata_hash,uri,ident))
             finally: target.unlink(missing_ok=True)
         except Exception as error:
@@ -184,11 +193,20 @@ class CandyStore:
                 'local_timeout':'Local generation exceeded 20 minutes on this Mac. Your grade is saved; close other apps before an explicit retry.',
                 'local_generation':'Local Schnell could not finish. Check available memory and the local model setup. Your grade is saved.',
                 'configuration':'The hosted image client is not configured. Check HF_TOKEN and install scripts/requirements-candy.txt.',
+                'space_quota':'The free image Space is out of quota or denied this request. Your grade is saved. Retry later; no paid fallback was used.',
+                'space_unavailable':'The free image Space is unavailable or its API changed. Your grade is saved. No paid fallback was used.',
             }.get(str(error),safe)
             with self.platform.db() as db: db.execute('UPDATE candy_jobs SET state=?,error=? WHERE id=?',('uncertain' if uncertain else 'failed',safe,ident))
 
-    @staticmethod
-    def _write(path,data):
+    def _write(self,path,data):
+        if self.database_assets:
+            digest,kind=path.stem,path.suffix.removeprefix('.')
+            if hashlib.sha256(data).hexdigest()!=digest: raise RuntimeError('immutable_asset')
+            with self.platform.db() as db:
+                db.execute('INSERT OR IGNORE INTO candy_blobs(digest,kind,content) VALUES (?,?,?)',(digest,kind,data))
+                row=db.execute('SELECT kind,content FROM candy_blobs WHERE digest=?',(digest,)).fetchone()
+                if row['kind']!=kind or bytes(row['content'])!=data: raise RuntimeError('immutable_asset')
+            return
         if path.exists():
             if path.read_bytes()!=data: raise RuntimeError('immutable_asset')
             return
@@ -202,8 +220,13 @@ class CandyStore:
     def blob(self,digest,kind):
         if not re.fullmatch(r'[0-9a-f]{64}',digest) or kind not in ('png','json'): raise Fault(404,'Candy asset not found.')
         path=self.root/(digest+'.'+kind)
-        if not path.is_file(): raise Fault(404,'Candy asset not found.')
-        data=path.read_bytes()
+        if self.database_assets:
+            with self.platform.db() as db: row=db.execute('SELECT content FROM candy_blobs WHERE digest=? AND kind=?',(digest,kind)).fetchone()
+            if not row: raise Fault(404,'Candy asset not found.')
+            data=bytes(row['content'])
+        else:
+            if not path.is_file(): raise Fault(404,'Candy asset not found.')
+            data=path.read_bytes()
         if hashlib.sha256(data).hexdigest()!=digest: raise Fault(503,'Candy content integrity check failed.')
         return data
 

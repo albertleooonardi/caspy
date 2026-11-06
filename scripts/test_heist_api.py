@@ -1,8 +1,9 @@
 import unittest
 import tempfile
+from unittest.mock import patch
 from pathlib import Path
 
-from heist_api import Games
+from heist_api import Games, next_daily_reset
 
 
 class FakeGateway:
@@ -26,6 +27,72 @@ class FakeGateway:
 
 
 class GamesTest(unittest.TestCase):
+    def test_contributors_can_replay_completed_heists_without_daily_reset(self):
+        for status in ('lost', 'void', 'won'):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as folder:
+                store = Path(folder) / 'games.json'
+                games = Games(FakeGateway(), store)
+                first = games.create('wallet:contributor', unlimited=True)
+                games.sessions[first['id']]['data']['status'] = status
+                games.persist()
+                restored = Games(FakeGateway(), store)
+                second = restored.create('wallet:contributor', unlimited=True)
+                self.assertNotEqual(first['id'], second['id'])
+                self.assertEqual(second['attempts_remaining'], 3)
+                self.assertEqual(restored.owned(first['id'], 'wallet:contributor')['data']['status'], status)
+                self.assertEqual(restored.create('wallet:contributor', unlimited=True)['id'], second['id'])
+
+    def test_unlimited_replay_does_not_abandon_pending_or_inflight_turns(self):
+        with tempfile.TemporaryDirectory() as folder:
+            games = Games(FakeGateway(), Path(folder) / 'games.json')
+            first = games.create('wallet:contributor', unlimited=True)
+            games.sessions[first['id']]['data']['status'] = 'pending_review'
+            self.assertEqual(games.create('wallet:contributor', unlimited=True)['id'], first['id'])
+            games.sessions[first['id']]['data']['status'] = 'won'
+            games.sessions[first['id']]['in_flight'] = 'judge'
+            self.assertEqual(games.create('wallet:contributor', unlimited=True)['id'], first['id'])
+
+    def test_jakarta_reset_boundary(self):
+        # Unix epoch midnight UTC is 07:00 Jakarta: next midnight is 17:00 UTC.
+        self.assertEqual(next_daily_reset(0), 17 * 3600)
+        self.assertEqual(next_daily_reset(17 * 3600 - 1), 17 * 3600)
+        self.assertEqual(next_daily_reset(17 * 3600), 41 * 3600)
+
+    def test_daily_retry_preserves_loss_and_survives_restart(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = Path(folder) / 'games.json'
+            with patch('heist_api.time.time', return_value=100):
+                games = Games(FakeGateway(), store)
+                first = games.create('wallet:owner')
+                for turn in range(3):
+                    games.turn(first['id'], 'wallet:owner', 'Pitch', str(turn), lambda _: None)
+            reset = first['next_reset_at']
+            with patch('heist_api.time.time', return_value=reset - 1):
+                restored = Games(FakeGateway(), store)
+                self.assertEqual(restored.create('wallet:owner')['id'], first['id'])
+            with patch('heist_api.time.time', return_value=reset):
+                new = restored.create('wallet:owner')
+                self.assertNotEqual(new['id'], first['id'])
+                self.assertEqual((new['attempts_remaining'], new['messages']), (3, []))
+                self.assertEqual(restored.create('wallet:owner')['id'], new['id'])
+                again = Games(FakeGateway(), store)
+                self.assertEqual(again.create('wallet:owner')['id'], new['id'])
+                self.assertEqual(again.owned(first['id'], 'wallet:owner')['data']['status'], 'lost')
+                with self.assertRaises(LookupError):
+                    again.owned(first['id'], 'wallet:other')
+
+    def test_daily_retry_keeps_active_pending_and_winning_heists(self):
+        for status in ('active', 'pending_review', 'won'):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as folder:
+                store = Path(folder) / 'games.json'
+                with patch('heist_api.time.time', return_value=100):
+                    games = Games(FakeGateway(), store)
+                    first = games.create('wallet:owner')
+                    games.sessions[first['id']]['data']['status'] = status
+                    games.persist()
+                with patch('heist_api.time.time', return_value=first['next_reset_at'] + 1):
+                    self.assertEqual(Games(FakeGateway(), store).create('wallet:owner')['id'], first['id'])
+
     def setup_game(self, **kwargs):
         gateway = FakeGateway(**kwargs)
         games = Games(gateway)

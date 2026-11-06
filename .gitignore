@@ -73,3 +73,7 @@ bifrost/
 
 # Isolated Apple Silicon image-generation runtime
 .venv-flux/
+
+# Hosting CLI context and pulled environment files
+.vercel/
+.railway/

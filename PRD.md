@@ -3,15 +3,15 @@
 
 | Field   | Value                                |
 | ------- | ------------------------------------ |
-| Version | 1.5 (Supabase migration, unified launcher and website walkthrough)               |
+| Version | 1.6 (personal dashboard, contributor replay and marketplace board)               |
 | Status  | Local MVP implemented; public-launch requirements remain         |
-| Date    | 2026-11-04                           |
+| Date    | 2026-11-06                           |
 | Owner   | TBD                                  |
 | Type    | AI evaluation platform with an optional NFT game |
 
 ---
 
-> **Checkpoint: 4 November 2026.** Sections 20–22 describe the implemented local MVP and its validation limits. There is no failure NFT or random rarity draw. Production requirements elsewhere (managed Postgres/Redis, KMS, edge protection, public networks, n8n, scale targets and audits) are roadmap items unless explicitly marked implemented. Section 22 is the authoritative status and operations summary.
+> **Checkpoint: 6 November 2026.** Sections 20–22 describe the implemented local MVP and its validation limits. There is no failure NFT or random rarity draw. Production requirements elsewhere (managed Postgres/Redis, KMS, edge protection, public networks, n8n, scale targets and audits) are roadmap items unless explicitly marked implemented. Section 22 is the authoritative status and operations summary.
 
 ## 1. Summary
 
@@ -41,7 +41,7 @@ Latency, win-rate, cost and reproducibility figures below are product targets, n
 ### Non-Goals (v1)
 
 - No automated fiat checkout, real-money marketplace settlement or token (ERC-20) economy. A fixed-price local NFT/prompt marketplace is implemented. Dataset licensing has listed prices and manual access approval, without charging buyers.
-- No multi-turn memory beyond the 3-attempt session.
+- No cross-heist conversational memory for the LLM. Historical NFT-mode chats are retained and can be reopened from Account; they do not add prompts to a new heist.
 - No user-generated Caspy personas.
 - No custodial wallets.
 
@@ -59,7 +59,7 @@ Latency, win-rate, cost and reproducibility figures below are product targets, n
 ## 4. Core Gameplay Loop
 
 1. Register or sign in. In NFT mode, connect an available local Anvil test wallet and verify its ownership. Research campaign participation and commercial research permission are separate optional choices.
-2. The server creates or restores the wallet’s seasonal heist with up to three prompts. Each prompt is limited to 500 characters.
+2. The server creates or restores an owned heist with up to three prompts, each limited to 500 characters. Contributors can start another heist after a completed result without a daily cooldown; other account roles follow the daily retry policy in section 21.1. Active or pending heists are resumed, not replaced.
 3. Caspy replies through Bifrost; a separate judge evaluates the persuasion and response. The server owns attempt counts and final status.
 4. A clean `YIELD` with confidence at least 0.8 must pass the implemented server checks. A friendly Caspy reply alone does not award a win. An unavailable judge can leave the heist pending for review without another prompt charge.
 5. Only a confirmed eligible win reserves a candy and persists its quality/novelty assessment and C/B/A/S grade. A loss earns no candy, reward image or NFT.
@@ -76,6 +76,8 @@ AI-only mode skips wallets, image rewards and NFT minting. The scripted frontend
 - FR-A2: Account authorization and wallet verification are separate. Local account sessions are opaque, hashed server-side, stored in HttpOnly/SameSite cookies, and expire after eight hours; wallet sessions expire after six hours. Logout revokes the server session.
 - FR-A3: NFT mode additionally uses single-use SIWE nonces with five-minute TTL, domain/URI/chain checks, and a verified wallet linked uniquely to an account. The local MVP uses Anvil test EOAs; production smart-wallet/ERC-1271 support remains a rollout requirement.
 - FR-A4: Optional anti-Sybil tiering (see 9.3).
+- FR-A5: Login/registration default to `/dashboard`; authenticated Home shows the personal dashboard, while guests keep the public landing page. Protected account data still requires server authorization.
+- FR-A6: Research workspaces are self-service and scoped to their organization. Researcher verification/approval and badges are proposed, not implemented.
 
 ### 5.2 Chat
 
@@ -84,6 +86,8 @@ AI-only mode skips wallets, image rewards and NFT minting. The scripted frontend
 - FR-C3: UI always shows attempts remaining (server-authoritative value).
 - FR-C4: Caspy stays in character; never reveals system prompt, judge rubric, or win criteria.
 - FR-C5: Non-English input allowed; Caspy replies in the user's language (judge language-agnostic).
+- FR-C6: Contributor replay is granted only from the authenticated server role, never a client flag. Every new heist has three prompts; unresolved turns remain protected. Replay does not reset NFT entitlements.
+- FR-C7: Previous NFT-mode conversations are retained. Account links reopen owned heists and their result/claim pages; daily resets and contributor replay do not delete old records.
 
 ### 5.3 Judging
 
@@ -267,6 +271,10 @@ Concurrency: row lock + unique `(session_id, attempt_no)` guarantees no double-s
 
 ### 8.3 Data Model (Postgres)
 
+Illustrative production schema, not the current runtime schema. Do not add a
+unique wallet/season constraint to game sessions: contributor replay and daily
+retries require multiple sessions. Reward entitlements remain separately unique.
+
 ```sql
 create table players (
   wallet text primary key,              -- lowercased
@@ -287,8 +295,7 @@ create table sessions (
   status text check (status in ('active','won','lost','pending_review','void')),
   attempts_remaining int check (attempts_remaining between 0 and 3),
   created_at timestamptz default now(),
-  closed_at timestamptz,
-  unique (wallet, season_id)            -- one game per wallet per season
+  closed_at timestamptz                -- multiple heists per wallet/season are allowed
 );
 
 create table turns (
@@ -367,15 +374,17 @@ Before a public deployment: independent contract/security review, durable asset 
 
 ## 11. Frontend Specification
 
-- Implemented routes: Landing, Login, Register, Account, Play, Result/Claim, Collection, Marketplace, How to play, Research, Datasets, Gallery, Rules, Privacy and Terms. A route existing does not imply every production integration in this document is enabled.
+- Implemented routes: Landing, Dashboard, Login, Register, Account, Play, Result/Claim, Collection, Marketplace, How to play, Research, Datasets, Gallery, Rules, Privacy and Terms. A route existing does not imply every production integration in this document is enabled.
 - How-to-play film: 100 seconds, ten chapters, animated website screenshots and typography, synchronized captions/chapters, Halloween music and wordless choir, no voiceover. Detailed player/researcher guides and an optional local-only quiz accompany it. Tutorial rewards use labeled fictional data; see section 22.4.
 - Chat UX: streamed text, typing "boo" animation, attempts as 3 candy icons, disabled input during stream, clear errors.
-- Wallet UX: connect, SIWE sign, network switch prompt, tx pending/confirmed states, ENS display.
-- Accessibility: WCAG 2.2 AA, reduced-motion mode, keyboard navigable, screen-reader labels on attempts.
-- Performance: LCP < 2.0 s on 4G; island hydration only for chat/wallet.
+- Implemented wallet UX: explicit local-test-wallet selection/loading, SIWE authentication and transaction feedback. MetaMask/WalletConnect, network switching and ENS are future integration work; local mode currently uses unlocked Anvil accounts.
+- Accessibility target: WCAG 2.2 AA. Focus styles, keyboard-operable controls, attempt labels and reduced-motion handling exist; a complete audit has not passed.
+- Performance target: LCP < 2.0 s on 4G. The current application hydrates a React app island; measured 4G performance is not certified.
 - Never trust client state; the UI renders only server-returned `attempts_remaining` and `status`.
-- Clear disclosure: prompts are stored and may be shown publicly if opted in.
-- Mobile-first; deep-link support for wallet apps (WalletConnect).
+- Clear disclosure: operational chats are stored; research and commercial sharing are separate opt-ins. Public NFT metadata excludes raw prompts.
+- Responsive layouts are implemented; mobile-wallet deep links/WalletConnect remain roadmap items.
+- Collection uses compact deck cards with a grade banner and candy name. Marketplace uses horizontal listing boards with candy icon/name, grade, seller wallet, asking price and actions; its graph is removed.
+- Login/register retain the original enlarged Caspy PNG, compact forms and paired registration fields. Desktop sign-in targets a single viewport; short screens/zoom remain scrollable. No animated replacement mascot or GIF is shipped.
 
 ## 12. Legal, Compliance & Safety
 
@@ -524,7 +533,7 @@ not stated customers or partners.
   operator administration, verified organizations, invitations and SSO are future
   work; there is no self-registerable global administrator role.
 
-Pages: `/register`, `/login`, `/account`, `/research`, `/datasets`, plus the
+Pages: `/register`, `/login`, `/dashboard`, `/account`, `/research`, `/datasets`, plus the
 existing `/play`, `/result`, `/claim`, `/privacy` and `/terms` pages.
 
 ### 20.3 Authentication and authorization acceptance criteria
@@ -540,10 +549,13 @@ existing `/play`, `/result`, `/claim`, `/privacy` and `/terms` pages.
 - Server checks, not hidden frontend controls, enforce game ownership, linked
   wallets, workspace ownership, review access, release ownership and buyer grants.
 - Only a verified wallet can be linked, and it cannot be linked to two accounts.
-  Changing accounts cannot reset the NFT season's one-wallet/one-heist constraint.
+  Changing accounts cannot bypass the wallet's candy entitlement or one-mint-per-deployment constraint. Heist replay follows account-role rules, separately from NFT limits.
 - Registration and login are throttled. Local development does not implement
   email verification, password reset, MFA, enterprise verification or SSO.
-  These must be addressed before a public account service is launched.
+  Researcher signup/workspace creation is not organization verification. A future
+  verification flow may combine email confirmation, organization/use-case details
+  and operator approval; no such workflow, admin approval screen or verified badge
+  is implemented. These gaps must be addressed before a public account service is launched.
 
 ### 20.4 Consent, collection and provenance
 
@@ -659,7 +671,23 @@ quality and consent/rights validation.
 Only an independent `YIELD` verdict with confidence >= 0.8, no exploit flag,
 and a non-exploit category earns candy. A loss, void or pending review issues no
 image entitlement or voucher. Consent to research is optional and has no bearing
-on rewards. One heist and at most one candy per wallet per deployed season.
+on rewards. Contributor accounts can start unlimited fresh heists after a
+completed win/loss/void, with three prompts per heist and no daily cooldown.
+This permission is derived from the authenticated account role on the server;
+client flags cannot grant it. Active/in-flight/pending-review sessions must
+finish before starting another. Past chats and winning claims stay accessible
+through Account → View heist. NFT entitlement and contract mint limits remain
+unchanged: unlimited gameplay does not mean unlimited candy.
+
+For other account roles, after a lost or void heist, the wallet can start a fresh three-prompt
+heist on the next Jakarta calendar day (reset at 00:00 WIB / UTC+7), measured
+from when the preceding heist started. Refreshing, signing out or restarting the
+API does not reset attempts. An active or pending-review heist carries over until
+resolved; midnight never discards a running turn. Winning heists remain available
+for generation and claiming, and cannot restart. At most one candy can be minted
+per wallet per contract deployment. Old conversations and research choices remain
+attached to their original heist. This supersedes the earlier one-game-per-season
+proposal and its illustrative unique(wallet, season_id) schema constraint.
 The v2 contract has an immutable cap of 1,000 NFTs; backend reservations also cap
 winning image entitlements. No paid entries, randomized reward tiers, or image
 rerolls. Image-generation randomness never chooses grade.
@@ -770,9 +798,9 @@ idempotent generation, retry/budget limits, immutable content and metadata witho
 source text. Verify signed commitments on-chain, grade/signature tampering,
 wallet/session replay, supply exhaustion, exact-price escrow purchases, seller
 withdrawals and prompt access changing from seller to buyer. Local automated
-checks use explicitly marked fixture artwork. Real local Schnell generation succeeded and was visually reviewed (section 22.6); this does not establish a complete live win-to-sale flow. Hosted FLUX.1-dev verification remains blocked by provider credits.
+checks use explicitly marked fixture artwork. A real eligible win, Schnell retry, mint, listing, user-executed purchase and prompt-access transfer were verified on 5 November (section 22.6). Seller payout remains unresolved. Hosted FLUX.1-dev verification remains blocked by provider credits.
 
-## 22. Implementation checkpoint — 4 November 2026
+## 22. Implementation checkpoint — 6 November 2026
 
 ### 22.1 Delivery status
 
@@ -783,9 +811,12 @@ This checkpoint records local implementation and observed tests, not public-laun
 | Registration/login | Implemented | Email/password, eight-hour account sessions, logout, roles/workspace access; recovery/email verification not implemented |
 | Wallet identity | Implemented locally | Verified linked Anvil test wallets; separate from account login |
 | Three-prompt gameplay | Implemented | Bifrost actor, independent judge, server-owned attempts/outcomes and pending-review recovery |
+| Contributor replay | Implemented; backend restart required to activate changed process | Unlimited completed-heist replay for server-authenticated contributors; three prompts per heist; NFT limits unchanged |
+| Other-role daily retry | Implemented and boundary-tested | Lost/void heists unlock next Jakarta day at 00:00 WIB; active/pending/winning results preserved |
+| Personal dashboard | Implemented | `/dashboard` and authenticated Home; activity summaries, wallet/collection counts, heist status and shortcuts |
 | Win-only reward grading | Implemented | C/B/A/S from quality components and collection-relative novelty; no random draw and no loss NFT |
 | Candy artwork | Local backend implemented and real-render tested | Four-step, 512×512 quantized Schnell; slow, single worker; no hosted fallback on failure |
-| NFT and prompt-access market | Implemented and fixture-chain tested | Local v2 commitments, escrow listing/buy/cancel/proceeds and ownership-checked prompt access |
+| NFT and prompt-access market | Implemented; real local purchase/access transfer verified | Horizontal listing board; no marketplace graph; seller payout discrepancy remains open |
 | AI research platform | Implemented locally | Optional named campaigns, separate commercial permission, human review, scoped metrics, manual grants/export and withdrawal |
 | Dataset payments / RLHF training | Not connected | Listed prices and curated labeled examples do not constitute checkout, pairwise preferences or a training pipeline |
 | Walkthrough | Updated | Animated actual-interface captures with fictional data, chapters, captions, written guides and quiz |
@@ -805,7 +836,7 @@ The launcher checks required tools/configuration, installs missing frontend/chai
 | Service | Local address | Startup behavior |
 | --- | --- | --- |
 | Frontend | `http://localhost:4321/play` | Astro app; API requests proxy to loopback API |
-| Game/account/research API | `http://127.0.0.1:8000` | Initializes SQLite and application state |
+| Game/account/research API | `http://127.0.0.1:8000` | Connects to Supabase PostgreSQL and restores local NFT-game state |
 | Bifrost | `http://127.0.0.1:8080` | Uses validated actor/judge routes; dashboard available |
 | Blockchain | `http://127.0.0.1:8545` | Anvil chain 31337, test ETH only |
 | Local image worker | No public service port | Starts on an approved eligible artwork job; one worker |
@@ -824,29 +855,34 @@ On a new supported Apple Silicon machine, run `bash scripts/shell/setup-flux.sh`
 
 ### 22.3 Database and persistence
 
-Migration completed: **98 live tables / 19,980 rows**, five lossless legacy archives with **39,776 rows**, and zero remaining SQLite database files under `data/`. All three PostgreSQL connection checks and 25 live regression cases passed; user-managed full-stack restart remains a separate validation step.
+Supabase migration completed on 4 November. At migration time, the verified
+snapshot contained **98 live tables / 19,980 rows**, with five lossless legacy
+archives containing **39,776 rows**. These are historical migration counts, not
+current row totals. SQLite files and WAL/SHM sidecars were removed from `data/`
+after validation. A normal restart must not rerun migration or delete runtime data.
 
-**Supabase migration update (4 November):** the active runtime now targets
-Supabase PostgreSQL: `caspy` for application data, `caspy_bifrost_config` and
-`caspy_bifrost_logs` for the two gateway stores. The following SQLite paths
-record the pre-migration checkpoint, not a supported runtime fallback.
-Migration copies all legacy databases into private recovery archives, converts
-live tables/constraints/indexes, verifies row counts and content hashes, and
-removes old files only after validation. Existing account password hashes,
-sessions, permissions and gateway records are preserved. Supabase Auth and
-Storage are not introduced; chain state and image assets remain local.
-`run.sh` uses `.venv` with Psycopg and checks all three stores before startup.
-See [Supabase migration and recovery](docs/supabase.md) for the completed report
-and current operational details.
+| Storage | Current use |
+| --- | --- |
+| Supabase `caspy` | Accounts, hashed account sessions, wallet links, organizations, campaigns, contribution permissions, reviewed samples, releases, grants, audits and candy jobs/attempts |
+| Supabase `caspy_bifrost_config` / `caspy_bifrost_logs` | Isolated gateway configuration and logs |
+| Supabase `caspy_archive` | Private migration recovery snapshots; not live application tables |
+| `data/nft-games-*.json` | Persistent NFT-mode conversations, attempts and outcomes, scoped to contract/deployment |
+| `data/anvil-state.json` / `data/nft-local.json` | Local chain state and deployment identity |
+| `data/candy-assets/` | Content-addressed artwork/metadata; no raw public source prompts |
+| `data/credentials/` | Ignored, restricted local development credential handoff files; never commit or print |
 
+The API requires server-only `SUPABASE_DB_URL` and Psycopg 3.2.13 with TLS;
+Bifrost uses separate PostgreSQL credentials. No runtime SQLite fallback exists.
+SQLite is used only in disposable test fixtures and legacy migration readers.
+Supabase Auth and Storage are not integrated. AI-only conversations remain in
+process memory and are not durable across API restarts. Supabase does not yet
+hold the persistent NFT conversation JSON or image assets.
 
-- `data/platform.sqlite3`: SQLite accounts, hashed sessions, wallet links, organizations, campaigns, permissions, reviewed samples, releases, access requests/grants, audit metadata and candy jobs/attempts. Created and initialized by the API; private file mode 0600. No Supabase service is required for this local MVP.
-- `data/nft-games-*.json`: NFT heists scoped to contract/deployment identity. AI-only game conversations remain process-memory state and reset on API restart.
-- `data/anvil-state.json` and `data/nft-local.json`: local chain persistence and deployment configuration. A changed deployment can create a new season/collection; it does not silently migrate old NFTs.
-- `data/candy-assets/`: content-addressed artwork and metadata. Prompt text is excluded from public NFT metadata and only delivered through authorized access rules.
-- Bifrost keeps its own SQLite configuration/logging files under `data/`; these are separate from the account/research database.
-
-Normal restarts preserve these files. Do not delete `data/` as a restart procedure. Backup/recovery, encryption at rest, multi-instance consistency and managed retention operations still need production engineering. A localhost asset URI is not durable public NFT hosting.
+Game replay creates a new record and retains previous chats and research choices.
+Backend owner checks apply when reopening a historical session. Backups, durable
+public asset URLs, multi-instance consistency and managed retention still need
+production engineering. The current administrative database role needs narrowing
+before production. See [Supabase migration and recovery](docs/supabase.md).
 
 ### 22.4 Gameplay presentation checkpoint
 
@@ -875,11 +911,86 @@ These are dated observations, not a fresh full regression run for this documenta
 - Walkthrough v5 validation on 4 November: encoded video/audio, duration, format, motion and eight nonblank in-bounds screenshot crops passed; decoded audio had zero clipped samples. Frontend checks reported zero errors/warnings/hints, all seven tests passed and the production build passed. New browser playback was limited by unreliable capture; prior v4 play/seek/pause checks passed in Safari.
 - Launcher reorganization: shell syntax/help and helper resolution from another working directory passed. These checks did not start or certify the entire running stack.
 
-**Next acceptance gate:** activate the correct local backend and complete a real eligible win → image generation → voucher → mint → collection → listing → purchase → private prompt-access flow. Fixture integration and staged tutorial captures do not replace this test. Also resolve contradictory judge labels and document failure/retry behavior under memory pressure.
+**5 November live QA:** eligible Bifrost win (S/92), failed local Schnell attempt
+followed by a same-seed successful retry, token #1 mint/listing, user-executed
+0.01 test-ETH purchase and prompt-access transfer passed. A fictional researcher
+completed review, development dataset publication/export and approved research
+withdrawal. Seller payout is not confirmed: chain readback still showed 0.01 test
+ETH credited after user reports of withdrawal. MetaMask extension signing was
+bypassed by unlocked Anvil RPC and has not passed QA.
+
+**6 November change checks:** 14 game API tests, 15 account/research tests and
+11 frontend tests passed (40 total in this focused pass), plus type check and
+production build (17 routes). Tests cover contributor replay after terminal
+results, active/pending/in-flight protection, Jakarta midnight boundaries,
+persistence, ownership and role-derived replay flags. Existing Leonardi account
+credentials were preserved; David and Elroy were provisioned as contributors.
+Both new accounts passed live local API login, session readback and logout.
+This is not a fresh rerun of every historical contract/Supabase/load test.
+
+Representative earlier Chrome checks covered mobile login, wallet connection,
+research disclosure and collection search/reset. Later capture attempts returned
+blank images or no-window errors; the newest dashboard, registration/deck/board
+layouts and contributor replay still need complete live browser acceptance.
+Changes to Python require a user-managed `./run.sh` restart; a build does not
+prove the running API has loaded new replay permissions.
+
+**Next acceptance gates:** verify contributor replay and historical reward access
+after restart in Chrome; check login/register/dashboard/marketplace on desktop and
+mobile; resolve seller payout using a transaction receipt and zero credited
+balance; calibrate contradictory judge labels and image failure behavior under
+memory pressure. Do not mint fake sales or loosen reward gates to pass QA.
 
 Public rollout additionally needs production identity/storage/signing, durable artwork delivery, rights/licensing review, representative held-out evaluation, mobile/cross-browser/accessibility testing, load/security testing and independent contract review. No public-chain deployment, paid inference checkout, real-money settlement or n8n delivery is certified at this checkpoint.
 
-Evidence: [full QA](docs/qa-report-2026-11-03.md), [local image QA](docs/qa-local-schnell.md), [account/research guide](docs/platform.md), [candy/marketplace guide](docs/candy.md).
+Evidence: [5 November live QA](docs/qa-report-2026-11-05.md), [6 November UI/replay checkpoint](docs/ui-ux-refresh-2026-11-06.md), [earlier full QA](docs/qa-report-2026-11-03.md), [local image QA](docs/qa-local-schnell.md), [account/research guide](docs/platform.md), [candy/marketplace guide](docs/candy.md).
+
+### 22.7 Signed-in experience and access rules
+
+| Visitor / role | Current experience and authority |
+| --- | --- |
+| Guest | Public landing and explanatory/catalog pages; account required for personal data and live play |
+| Contributor | Personal dashboard, unlimited completed-heist replay, collection/listing controls and research-choice management |
+| Researcher | Personal dashboard plus own research workspace, consented examples, review/releases and explicit dataset grants; daily retry policy applies |
+| Operator | Local service/database operation; no self-registerable global admin account |
+
+Login and registration default to `/dashboard`, preserving explicitly allowed
+`next` destinations. Authenticated `/` shows the dashboard; guest `/` keeps Home.
+Account settings, role/workspace creation and contribution withdrawal stay at
+`/account`. That page now links to historical chats; the dashboard shows five
+recent activity summaries rather than full transcripts. A device without a saved
+current session ID must open Play to restore it. Wallet selection remains
+separate from account login. Converting a contributor to a research workspace
+changes the account role and therefore the replay policy; consent alone does not.
+
+Development accounts requested on 6 November: `leonardi@caspy.local`,
+`david@caspy.local`, `elroy@caspy.local`, all contributor role. Leonardi already
+existed and its password was preserved. New credentials are stored only in an
+ignored 0600 local file under `data/credentials/`; they are not included in this
+PRD. Operator provisioning does not record terms acceptance or research consent
+on another person's behalf. `.local` addresses do not establish email ownership.
+
+### 22.8 Current presentation decisions
+
+- Original Caspy illustration retained and enlarged on account pages; no GIF or
+  replacement animated mascot. Compact sign-in targets one desktop viewport;
+  registration pairs fields on wider screens, and its illustration stays visible
+  while scrolling. Phones/zoom/short screens retain scrolling to reach all fields.
+- Shared locally hosted fonts, lavender/plum surfaces, orange primary actions,
+  persistent navigation, focus states and native password visibility controls.
+- Signed-in dashboard: owned activity counts, connected-wallet candy count,
+  current heist/retry/reward guidance, account links and role-specific shortcuts.
+  Failed requests show unavailable state, never invented statistics.
+- Collection: compact deck cards, grade banner, artwork/name plate, collapsible
+  listing form and prompt disclosure. Legacy generic titles have stable UI aliases
+  (token #1: Moonspell Bonbon); committed NFT metadata is not rewritten, and these
+  aliases are not claimed to be generated from the user's prompt.
+- Marketplace: horizontal achievement-style boards showing icon, name/number,
+  grade/score, seller wallet, price and buy/cancel action. Name/grade/price discovery
+  controls remain. Prompt license is expandable. The graph is intentionally removed;
+  `/market/history` and its source component remain available but are not rendered.
+- Walkthrough v5 predates these latest layouts; it is not a recording of the new
+  dashboard/board UI. Recapture/export is future work, not completed by CSS edits.
 
 ## Appendix A: Threat Model Summary (STRIDE)
 
