@@ -1,6 +1,6 @@
 export type GameStatus = 'active' | 'won' | 'lost' | 'pending_review' | 'void';
 export type Message = { role: 'user' | 'caspy'; text: string };
-export type Session = { id: string; status: GameStatus; attempts_remaining: number; messages: Message[]; minted?: boolean; tx_hash?: string; tier?: 'treat' | 'trick'; token_id?: string; contract?: string; chain_id?: number; research_consent?: boolean; commercial_consent?: boolean; campaign_id?: string; evaluations?: { turn: number; verdict: string; confidence: number }[] };
+export type Session = { id: string; next_reset_at?: number; unlimited_heists?: boolean; status: GameStatus; attempts_remaining: number; messages: Message[]; minted?: boolean; tx_hash?: string; tier?: 'treat' | 'trick'; token_id?: string; contract?: string; chain_id?: number; research_consent?: boolean; commercial_consent?: boolean; campaign_id?: string; evaluations?: { turn: number; verdict: string; confidence: number }[] };
 export type TurnResult = { attempts_remaining: number; status: GameStatus; reply?: string };
 export const IS_NFT_ENABLED = import.meta.env?.PUBLIC_NFT_ENABLED === 'true';
 export const IS_LOCAL_AI = import.meta.env?.PUBLIC_LOCAL_AI === 'true' && !IS_NFT_ENABLED;
@@ -21,11 +21,11 @@ export function newDemo(): Session {
   saveDemo(session);
   return session;
 }
-export async function request<T>(path: string, body?: unknown, baseUrl = API_URL): Promise<T> {
+export async function request<T>(path: string, body?: unknown, baseUrl = API_URL, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`, {
     method: body === undefined ? 'GET' : 'POST', credentials: 'include',
     headers: body === undefined ? {} : { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : JSON.stringify(body), signal,
   });
   if (!response.ok) {
     let detail = 'Caspy lost the connection. Please try again.';

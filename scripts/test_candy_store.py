@@ -77,6 +77,27 @@ class CandyTests(unittest.TestCase):
         with self.assertRaises(Fault): self.candy.generate('one',self.user,True)
         self.assertEqual(self.renderer.calls,0)
 
+    def test_live_progress_and_duplicate_click_do_not_submit_two_images(self):
+        import threading
+        started,release=threading.Event(),threading.Event()
+        def render_progress(prompt,seed,target,progress):
+            progress('waiting_provider');started.set()
+            if not release.wait(5): raise RuntimeError('fixture timeout')
+            return self.renderer.render(prompt,seed,target)
+        self.renderer.render_with_progress=render_progress
+        self.earn()
+        try:
+            self.candy.generate('one',self.user,True)
+            self.assertTrue(started.wait(2))
+            status=self.candy.generate('one',self.user,True)
+            self.assertEqual(status['generation_phase'],'waiting_provider')
+            self.assertGreater(status['generation_started_at'],0)
+            self.assertEqual(status['attempts'],1)
+        finally: release.set()
+        self.candy.pool.shutdown(wait=True)
+        self.assertEqual(self.renderer.calls,1)
+        self.assertEqual(self.candy.row('one')['state'],'ready')
+
     def test_billing_failure_preserves_grade_and_creates_no_artwork(self):
         assessment=self.earn()['assessment']
         with patch.object(self.renderer,'render',side_effect=RuntimeError('billing')) as render:

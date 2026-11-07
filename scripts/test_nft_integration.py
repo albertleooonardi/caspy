@@ -146,6 +146,12 @@ class NFTIntegration(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.driver('mint', voucher=tampered)
         transaction = self.driver('mint', voucher=voucher)
+        # Recover after a browser loses the transaction-submit callback.
+        recovered=self.api('/mint/status/'+game['id'])
+        self.assertTrue(recovered['minted'])
+        commitments=self.server.candy.commitments(game['id'])
+        with self.assertRaises(ValueError):
+            self.server.nft.call('status',session_id=game['id'],to=address,**{**commitments,'score':0})
         status = self.api('/mint/submit', {'session_id': game['id'], 'tx_hash': transaction['hash']})
         self.assertTrue(status['minted'])
         self.assertEqual(status['status'], 'confirmed')
@@ -153,12 +159,16 @@ class NFTIntegration(unittest.TestCase):
         self.api('/game/voucher', {'session_id': game['id']}, expected=400)
         with self.assertRaises(ValueError):
             self.driver('mint', voucher=voucher)
-        # Durable game and claim survive a new Games instance and remain one per wallet.
+        # A contributor may replay, while the old claim stays durable and one per wallet.
         self.server.games = Games(FakeGateway(), self.store)
-        restored = self.api('/game/session', {})
+        restored = self.api('/game/session/' + game['id'])
         self.assertEqual(restored['id'], game['id'])
         self.assertTrue(restored['minted'])
         self.assertEqual(restored['token_id'], status['token_id'])
+        replay = self.api('/game/session', {})
+        self.assertNotEqual(replay['id'], game['id'])
+        self.assertEqual(replay['attempts_remaining'], 3)
+        self.assertTrue(self.api('/game/session/' + game['id'])['minted'])
         available = self.api('/auth/local-wallets')['wallets']
         self.assertTrue(any(item['address'].lower() == address.lower() and item['linked'] for item in available))
         collection=self.api('/candy/collection')['tokens']

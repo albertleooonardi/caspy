@@ -42,8 +42,8 @@ class LocalNFT:
 
     def nonce(self, token, body, origin):
         address = body.get('address', '')
-        if not isinstance(address, str) or not re.fullmatch(r'0x[0-9a-fA-F]{40}', address) or body.get('chain_id') != 31337:
-            raise ValueError('Connect a local chain 31337 wallet.')
+        if not isinstance(address, str) or not re.fullmatch(r'0x[0-9a-fA-F]{40}', address) or body.get('chain_id') != self.config['chain_id']:
+            raise ValueError('Connect a wallet on the configured candy chain.')
         with self.lock:
             now = time.time()
             self.challenges = {k: v for k, v in self.challenges.items() if v['expires'] > now}
@@ -127,6 +127,7 @@ class LocalNFT:
                 raise ValueError('Invalid transaction hash.')
             result = self.call('status', session_id=ident, to=address, **commitments,
                                **({'tx_hash': tx_hash} if tx_hash else {}))
+            before={key:data.get(key) for key in ('minted','tx_hash','token_id','contract','chain_id')}
             for key in ('minted', 'tx_hash', 'token_id', 'contract', 'chain_id'):
                 if key in result:
                     data[key] = result[key]
@@ -135,5 +136,5 @@ class LocalNFT:
                 data.pop('tx_hash', None)
             if result.get('minted'):
                 self.candies.mark_minted(ident, result['token_id'])
-            games.persist()
+            if before!={key:data.get(key) for key in before}: games.persist()
             return result

@@ -1,8 +1,8 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import App from '../components/App';
-export function getStaticPaths() { return ['collection', 'marketplace', 'login', 'register', 'account', 'research', 'datasets', 'play', 'how-to-play', 'gallery', 'rules', 'result', 'claim', 'privacy', 'terms'].map(page => ({ params: { page } })); }
+export function getStaticPaths() { return ['dashboard', 'collection', 'marketplace', 'login', 'register', 'account', 'research', 'datasets', 'play', 'how-to-play', 'gallery', 'rules', 'result', 'claim', 'privacy', 'terms'].map(page => ({ params: { page } })); }
 const page = Astro.params.page!;
-const names: Record<string, string> = { collection: 'Your candy collection', marketplace: 'Candy marketplace', login: 'Sign in', register: 'Create account', account: 'Your account', research: 'Research lab', datasets: 'Dataset catalog', play: 'The heist', 'how-to-play': 'How to play', gallery: 'Wall of Heists', rules: 'Rules & FAQ', result: 'Your heist', claim: 'Claim your collectible', privacy: 'Privacy', terms: 'Terms' };
+const names: Record<string, string> = { dashboard: 'Your dashboard', collection: 'Your candy collection', marketplace: 'Candy marketplace', login: 'Sign in', register: 'Create account', account: 'Your account', research: 'Research lab', datasets: 'Dataset catalog', play: 'The heist', 'how-to-play': 'How to play', gallery: 'Wall of Heists', rules: 'Rules & FAQ', result: 'Your heist', claim: 'Claim your collectible', privacy: 'Privacy', terms: 'Terms' };
 ---
 <Layout title={`${names[page]} — Caspy’s Prompt Heist`}><App page={page} client:load /></Layout>

@@ -86,6 +86,13 @@ class PlatformTests(unittest.TestCase):
         with self.assertRaises(Fault) as error: self.store.review_sample(self.buyer,sample['id'],body)
         self.assertEqual(error.exception.status,404)
 
+    def test_unlimited_heist_flag_is_derived_from_account_role(self):
+        game = self.game(research=False, commercial=False)
+        self.assertTrue(self.store.decorate({**game, 'unlimited_heists': False}, self.player)['unlimited_heists'])
+        researcher_game = {'id': 'researcher-heist', 'unlimited_heists': True}
+        decorated = self.store.associate_game(self.owner, researcher_game, {})
+        self.assertFalse(decorated['unlimited_heists'])
+
     def test_separate_explicit_consent_and_redaction(self):
         self.game(research=False,commercial=False)
         self.assertEqual(self.store.dashboard(self.owner)['totals']['turns'],0)
