@@ -76,17 +76,26 @@ export async function execute(input) {
     return { ...v,nonce:String(v.nonce),deadline:String(v.deadline),uri:input.uri,chainId:chain.id,contract,signature };
   }
   const listingRows=async () => {
-    const logs=await events({ address:getAddress(config.market),abi:marketAbi,eventName:'CandyListed',strict:true });
+    // Listings are numbered contiguously in storage. Reading current records
+    // avoids rescanning a growing testnet block history on every page load.
+    const next=await marketRead('nextListingId');
     const rows=[];
-    for(const log of logs) {
-      const [seller,tokenId,price,active]=await marketRead('listings',[log.args.listingId]);
-      if(active) rows.push({ listing_id:String(log.args.listingId),seller,token_id:String(tokenId),price_wei:String(price),active });
+    for(let first=1n;first<next;first+=8n) {
+      const ids=[];
+      for(let id=first;id<next&&id<first+8n;id++) ids.push(id);
+      const records=await Promise.all(ids.map(id=>marketRead('listings',[id])));
+      records.forEach(([seller,tokenId,price,active],index)=>{
+        if(active) rows.push({listing_id:String(ids[index]),seller,token_id:String(tokenId),price_wei:String(price),active});
+      });
     }
     return rows;
   };
   const tokenInfo=async (id) => {
     const tokenId=BigInt(id);
-    return { token_id:String(tokenId),owner:await read('ownerOf',[tokenId]),creator:await read('creatorOf',[tokenId]),grade:Number(await read('tokenGrade',[tokenId])),score:Number(await read('tokenScore',[tokenId])),prompt_hash:await read('tokenPromptHash',[tokenId]),image_hash:await read('tokenImageHash',[tokenId]),metadata_hash:await read('tokenMetadataHash',[tokenId]),uri:await read('tokenURI',[tokenId]),prompt_license:await read('promptLicense',[tokenId]),contract,market:config.market,chain_id:chain.id };
+    const [owner,creator,grade,score,prompt_hash,image_hash,metadata_hash,uri,prompt_license]=await Promise.all(
+      ['ownerOf','creatorOf','tokenGrade','tokenScore','tokenPromptHash','tokenImageHash','tokenMetadataHash','tokenURI','promptLicense'].map(name=>read(name,[tokenId])),
+    );
+    return {token_id:String(tokenId),owner,creator,grade:Number(grade),score:Number(score),prompt_hash,image_hash,metadata_hash,uri,prompt_license,contract,market:config.market,chain_id:chain.id};
   };
   if(action==='token') {
     const token=await tokenInfo(input.token_id);
@@ -99,11 +108,12 @@ export async function execute(input) {
     return { listings:rows,proceeds_wei:input.to ? String(await marketRead('proceeds',[input.to])) : '0',contract,market:config.market };
   }
   if(action==='collection') {
-    const logs=await events({ address:contract,abi:caspyAbi,eventName:'CandyMinted',strict:true });
+    const total=await read('totalMinted');
     const listings=await listingRows(),rows=[];
-    for(const log of logs) {
-      const token=await tokenInfo(log.args.tokenId);
-      const listing=listings.find(item=>item.token_id===token.token_id);
+    for(let tokenId=1n;tokenId<=total;tokenId++) {
+      const listing=listings.find(item=>item.token_id===String(tokenId));
+      if(input.to && getAddress(await read('ownerOf',[tokenId]))!==getAddress(input.to) && listing?.seller.toLowerCase()!==input.to.toLowerCase()) continue;
+      const token=await tokenInfo(tokenId);
       if(!input.to || token.owner.toLowerCase()===input.to.toLowerCase() || listing?.seller.toLowerCase()===input.to.toLowerCase()) rows.push({ ...token,listing:listing || null });
     }
     return { tokens:rows };
