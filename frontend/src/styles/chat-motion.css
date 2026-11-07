@@ -1,0 +1,61 @@
+/* Conversation motion stays inside the chat; the original mascot keeps its proportions. */
+.chat-experience .chat-panel { transition: box-shadow .5s ease, border-color .5s ease; }
+.chat-experience[data-chat-state="thinking"] .chat-panel,
+.chat-experience[data-chat-state="speaking"] .chat-panel { border-color: #cbb4de; box-shadow: 0 12px 40px #8155a414, 0 0 0 3px #eee4f655; }
+.chat-experience .chat-header { position: relative; gap: 12px; }
+.chat-experience .chat-title { min-width: 0; }
+.chat-experience .chat-title > div > span { transition: color .25s; }
+.chat-experience[data-chat-state="thinking"] .chat-title > div > span { color: #8756a2; }
+.chat-motion-toggle { display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; margin-left: auto; border: 1px solid #e7dced; border-radius: 50%; color: #89659c; background: #faf6fd; cursor: pointer; transition: background .2s, transform .2s; }
+.chat-motion-toggle:hover { background: #eee2f6; transform: scale(1.06); }
+.chat-motion-toggle:disabled { opacity: .55; cursor: default; }
+.chat-motion-toggle:focus-visible, .chat-jump-latest:focus-visible { outline: 3px solid #a67dbb; outline-offset: 3px; }
+.chat-transcript { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.chat-experience .chat-body { min-height: 0; overscroll-behavior: contain; overflow-anchor: none; }
+.chat-experience .chat-body:focus-visible { outline: 2px solid #bda1d0; outline-offset: -3px; }
+.chat-experience .chat-message { animation: chat-arrive .45s cubic-bezier(.2,.8,.2,1) both; transform-origin: 32px 20px; }
+.chat-experience .user-message { transform-origin: right 20px; }
+.chat-experience .chat-message p { transition: background-color .35s ease, box-shadow .35s ease; }
+.chat-experience .chat-message-live p { background: linear-gradient(120deg, #f3eaf9, #f9f5fc); box-shadow: 0 3px 16px #9b73b411; }
+.chat-experience .chat-message-live .message-avatar { animation: ghost-rock 2.8s ease-in-out infinite; }
+.chat-experience .chat-message-live .message-meta > span { display: inline-flex; align-items: center; gap: 5px; }
+.chat-experience .chat-message-live .message-meta > span::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: #a47aba; animation: thought-pulse 1.6s ease-in-out infinite; }
+.chat-token { animation: token-reveal .28s ease-out both; }
+.reply-cursor { display: inline-block; width: 5px; height: 15px; margin-left: 5px; vertical-align: -2px; border-radius: 4px; background: #a383b7; animation: thought-pulse 1s ease-in-out infinite; }
+.liquid-typing { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; min-height: 36px; }
+.typing-orb { display: grid; place-items: center; width: 36px; height: 36px; color: #8c5ba5; background: #e4d4ef; border-radius: 45% 55% 62% 38% / 50% 38% 62% 50%; animation: liquid-thought 2.8s ease-in-out infinite; }
+.typing-drops { display: inline-flex; align-items: center; gap: 5px; height: 24px; }
+.typing-drops i { width: 7px; height: 7px; background: #a37bb7; border-radius: 50%; animation: drop-bounce 1.3s ease-in-out infinite; }
+.typing-drops i:nth-child(2) { animation-delay: .16s; background: #ba96ca; }
+.typing-drops i:nth-child(3) { animation-delay: .32s; background: #cfb7dc; }
+.typing-copy { color: #8b719b; font-size: 12px; }
+.chat-jump-latest { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; white-space: nowrap; border: 1px solid #d8c4e5; border-radius: 30px; color: #6d4b83; background: #fffcff; box-shadow: 0 4px 20px #55326c1f; cursor: pointer; font: inherit; font-size: 12px; animation: latest-arrive .22s ease-out; z-index: 2; }
+.chat-experience .textarea-wrap { transition: border-color .25s ease, box-shadow .25s ease, background .25s ease; }
+.chat-experience .textarea-wrap:focus-within { border-color: #ad86c2; background: #fffcff; box-shadow: 0 0 0 4px #b58bd216, 0 4px 18px #8755a10a; }
+.chat-experience .send-button { transition: transform .22s cubic-bezier(.2,.8,.2,1), background .2s, box-shadow .2s; }
+.chat-experience .has-draft .send-button:not(:disabled) { box-shadow: 0 3px 12px #f8814930; }
+.chat-experience .send-button:not(:disabled):hover { transform: translateY(-3px) rotate(-6deg); }
+.chat-experience .send-button:not(:disabled):active { transform: scale(.92); }
+.chat-experience[data-chat-state="thinking"] .sidebar-art .caspy-art,
+.chat-experience[data-chat-state="speaking"] .sidebar-art .caspy-art { animation: guardian-float 4s ease-in-out infinite; }
+.chat-experience[data-chat-state="thinking"] .sidebar-star,
+.chat-experience[data-chat-state="speaking"] .sidebar-star { animation: thought-pulse 2.5s ease-in-out infinite; }
+.chat-experience .game-finished { animation: chat-arrive .55s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes chat-arrive { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes token-reveal { from { opacity: .25; } to { opacity: 1; } }
+@keyframes liquid-thought { 0%,100% { border-radius: 45% 55% 62% 38% / 50% 38% 62% 50%; transform: translateY(0) rotate(-5deg); } 50% { border-radius: 62% 38% 42% 58% / 38% 60% 40% 62%; transform: translateY(-3px) rotate(7deg); } }
+@keyframes drop-bounce { 0%,60%,100% { transform: translateY(0) scale(.9); opacity: .6; } 30% { transform: translateY(-5px) scale(1.08); opacity: 1; } }
+@keyframes ghost-rock { 0%,100% { transform: translateY(0) rotate(-5deg); } 50% { transform: translateY(-3px) rotate(5deg); } }
+@keyframes guardian-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+@keyframes thought-pulse { 0%,100% { opacity: .45; } 50% { opacity: 1; } }
+@keyframes latest-arrive { from { opacity: 0; margin-bottom: -5px; } to { opacity: 1; margin-bottom: 0; } }
+.chat-experience[data-motion="off"] *, .chat-experience[data-motion="off"] *::before { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .chat-experience *, .chat-experience *::before { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+@media (max-width: 650px) {
+  .chat-experience .chat-header { gap: 8px; }
+  .chat-motion-toggle { width: 30px; height: 30px; }
+  .typing-copy { font-size: 11px; }
+  .chat-experience .chat-message p { max-width: 100%; }
+}
