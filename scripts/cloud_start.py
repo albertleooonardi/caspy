@@ -17,6 +17,15 @@ from database import database_url
 from runtime_config import server_settings
 
 
+def signal_child_group(child, sig):
+    # The npm gateway launcher spawns a native server. Signal both together,
+    # even when the launcher has already exited, so restarts cannot orphan it.
+    try:
+        os.killpg(child.pid, sig)
+    except ProcessLookupError:
+        pass
+
+
 def prepare(env):
     settings = server_settings(env)
     if not settings['production'] or env.get('CASPY_NFT_ENABLED') != 'true':
@@ -51,10 +60,10 @@ def main():
         nonlocal stopping
         stopping=True
         for child in children:
-            if child.poll() is None: child.terminate()
+            signal_child_group(child, signal.SIGTERM)
     signal.signal(signal.SIGTERM,stop);signal.signal(signal.SIGINT,stop)
     try:
-        children.append(subprocess.Popen(['bifrost','--app-dir',str(ROOT/'data'),'--host','127.0.0.1','--port','8080','--log-style','json','--log-level','warn'],env=env))
+        children.append(subprocess.Popen(['bifrost','--app-dir',str(ROOT/'data'),'--host','127.0.0.1','--port','8080','--log-style','json','--log-level','warn'],env=env,start_new_session=True))
         opener=urllib.request.build_opener(urllib.request.ProxyHandler({}))
         for _ in range(120):
             if stopping or children[0].poll() is not None: raise RuntimeError('Gateway stopped during startup.')
@@ -64,7 +73,7 @@ def main():
             except (OSError,ValueError): pass
             time.sleep(1)
         else: raise RuntimeError('Gateway readiness timed out.')
-        children.append(subprocess.Popen([sys.executable,str(ROOT/'scripts/heist_api.py')],env=env))
+        children.append(subprocess.Popen([sys.executable,str(ROOT/'scripts/heist_api.py')],env=env,start_new_session=True))
         while not stopping:
             if any(child.poll() is not None for child in children): raise RuntimeError('A required service exited.')
             time.sleep(1)
@@ -72,7 +81,9 @@ def main():
         stop()
         for child in children:
             try: child.wait(timeout=30)
-            except subprocess.TimeoutExpired: child.kill();child.wait()
+            except subprocess.TimeoutExpired:
+                signal_child_group(child, signal.SIGKILL)
+                child.wait()
 
 
 if __name__=='__main__':
