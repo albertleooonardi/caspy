@@ -119,6 +119,7 @@ export async function execute(input) {
     return { tokens:rows };
   }
   if(action==='status') {
+    let receiptBlock;
     if(input.tx_hash) {
       const tx=await client.getTransaction({ hash:input.tx_hash });
       const decoded=decodeFunctionData({ abi:caspyAbi,data:tx.input });
@@ -126,8 +127,29 @@ export async function execute(input) {
       if(tx.to?.toLowerCase()!==contract.toLowerCase() || tx.from.toLowerCase()!==input.to.toLowerCase() || decoded.functionName!=='mintCandy' || v.to.toLowerCase()!==input.to.toLowerCase() || v.sessionId!==sessionId || v.imageHash!==input.image_hash || v.metadataHash!==input.metadata_hash) throw new Error('Unrelated mint transaction.');
       if(tx.blockNumber===null) return { status:'pending',tx_hash:input.tx_hash };
       if((await client.getTransactionReceipt({ hash:input.tx_hash })).status==='reverted') return { status:'failed',tx_hash:input.tx_hash };
+      receiptBlock=tx.blockNumber;
     }
-    const logs=await events({ address:contract,abi:caspyAbi,eventName:'CandyMinted',args:{ sessionId,to:getAddress(input.to) },strict:true });
+    // Before a wallet has minted, storage proves there can be no mint event.
+    // A submitted transaction narrows verification to its single receipt block.
+    if(receiptBlock===undefined && !await read('usedSessions',[sessionId])) return {status:'pending',minted:false};
+    if(receiptBlock===undefined) {
+      // Recover a mint whose submit callback was lost using immutable token
+      // storage, not a scan of every block since the deployment.
+      const total=await read('totalMinted');
+      for(let first=1n;first<=total;first+=8n) {
+        const ids=[];
+        for(let id=first;id<=total&&id<first+8n;id++) ids.push(id);
+        const sessions=await Promise.all(ids.map(id=>read('tokenSession',[id])));
+        const index=sessions.indexOf(sessionId);
+        if(index<0) continue;
+        const token=await tokenInfo(ids[index]);
+        if(token.creator.toLowerCase()!==input.to.toLowerCase() || token.image_hash!==input.image_hash || token.metadata_hash!==input.metadata_hash || token.prompt_hash!==input.prompt_hash || token.grade!==input.grade || token.score!==input.score || token.uri!==input.uri) throw new Error('Mint commitments mismatch.');
+        return {status:'confirmed',minted:true,token_id:token.token_id,contract,chain_id:chain.id};
+      }
+      throw new Error('Mint storage is not yet available.');
+    }
+    const parameters={address:contract,abi:caspyAbi,eventName:'CandyMinted',args:{sessionId,to:getAddress(input.to)},strict:true};
+    const logs=await client.getContractEvents({...parameters,fromBlock:receiptBlock,toBlock:receiptBlock});
     const event=logs.find(log=>log.args.imageHash===input.image_hash && log.args.metadataHash===input.metadata_hash && log.args.promptHash===input.prompt_hash && log.args.grade===input.grade && log.args.score===input.score);
     return event ? { status:'confirmed',minted:true,tx_hash:event.transactionHash,token_id:String(event.args.tokenId),contract,chain_id:chain.id } : { status:'pending',minted:false,...(input.tx_hash ? { tx_hash:input.tx_hash } : {}) };
   }

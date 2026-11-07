@@ -127,6 +127,7 @@ class LocalNFT:
                 raise ValueError('Invalid transaction hash.')
             result = self.call('status', session_id=ident, to=address, **commitments,
                                **({'tx_hash': tx_hash} if tx_hash else {}))
+            before={key:data.get(key) for key in ('minted','tx_hash','token_id','contract','chain_id')}
             for key in ('minted', 'tx_hash', 'token_id', 'contract', 'chain_id'):
                 if key in result:
                     data[key] = result[key]
@@ -135,5 +136,5 @@ class LocalNFT:
                 data.pop('tx_hash', None)
             if result.get('minted'):
                 self.candies.mark_minted(ident, result['token_id'])
-            games.persist()
+            if before!={key:data.get(key) for key in before}: games.persist()
             return result

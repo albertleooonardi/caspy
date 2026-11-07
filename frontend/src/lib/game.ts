@@ -21,11 +21,11 @@ export function newDemo(): Session {
   saveDemo(session);
   return session;
 }
-export async function request<T>(path: string, body?: unknown, baseUrl = API_URL): Promise<T> {
+export async function request<T>(path: string, body?: unknown, baseUrl = API_URL, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`, {
     method: body === undefined ? 'GET' : 'POST', credentials: 'include',
     headers: body === undefined ? {} : { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : JSON.stringify(body), signal,
   });
   if (!response.ok) {
     let detail = 'Caspy lost the connection. Please try again.';

@@ -68,3 +68,46 @@ test('Vercel wildcard rewrite preserves nested API paths and query parameters', 
     await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));
   }
 });
+
+test('only successful content-addressed public artwork is cached without account cookies', async () => {
+  const originalFetch=globalThis.fetch, originalBackend=process.env.CASPY_BACKEND_URL;
+  process.env.CASPY_BACKEND_URL='https://backend.example';
+  const server=createServer((request,response)=>{void proxy(request,response);});
+  await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const address=server.address();
+  if(!address||typeof address==='string') throw new Error('Fixture did not bind.');
+  const base=`http://127.0.0.1:${address.port}`;
+  const asset='/api/candy/images/'+'a'.repeat(64)+'.png';
+  let assetStatus=200;
+  let assetType='image/png';
+  globalThis.fetch=(async (input, options)=>{
+    const isAsset=String(input).includes('/candy/images/');
+    const headers=new Headers(options?.headers);
+    assert.equal(headers.get('cookie'),isAsset ? null : 'caspy_account=fictional');
+    return new Response(isAsset ? 'png-fixture' : '{}',{
+      status:isAsset ? assetStatus : 200,
+      headers:isAsset ? {'Content-Type':assetType} : {'Content-Type':'application/json','Set-Cookie':'caspy_account=rotated; Secure; HttpOnly'},
+    });
+  }) as typeof fetch;
+  try {
+    const options={headers:{Cookie:'caspy_account=fictional'}};
+    const image=await originalFetch(base+asset,options);
+    assert.match(image.headers.get('cache-control')||'',/public.*immutable/);
+    assert.equal(image.headers.get('set-cookie'),null);
+    const account=await originalFetch(base+'/api/account/me',options);
+    assert.equal(account.headers.get('cache-control'),'no-store');
+    assert.match(account.headers.get('set-cookie')||'',/HttpOnly/);
+    assetStatus=404;
+    const missing=await originalFetch(base+asset,options);
+    assert.equal(missing.status,404);
+    assert.equal(missing.headers.get('cache-control'),'no-store');
+    assetStatus=200; assetType='text/html';
+    const loginPage=await originalFetch(base+asset,options);
+    assert.equal(loginPage.status,502);
+    assert.equal(loginPage.headers.get('cache-control'),'no-store');
+  } finally {
+    globalThis.fetch=originalFetch;
+    if(originalBackend===undefined) delete process.env.CASPY_BACKEND_URL;else process.env.CASPY_BACKEND_URL=originalBackend;
+    await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));
+  }
+});

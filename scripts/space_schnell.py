@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
@@ -28,32 +29,50 @@ class SpaceSchnell:
     configured = True
 
     def render(self, prompt, seed, target):
+        return self.render_with_progress(prompt, seed, target, lambda phase: None)
+
+    def render_with_progress(self, prompt, seed, target, progress):
         opener = urllib.request.build_opener(NoRedirect())
+        deadline = time.monotonic() + 240
 
         def read(path, body=None):
             request = urllib.request.Request(ORIGIN + path,
                 data=None if body is None else json.dumps(body).encode(),
                 headers={'Content-Type': 'application/json', 'User-Agent': 'Caspy-Demo/1.0'})
-            with opener.open(request, timeout=240) as response:
+            with opener.open(request, timeout=30) as response:
                 raw = response.read(LIMIT + 1)
             if len(raw) > LIMIT:
                 raise RuntimeError('invalid_image')
             return raw
 
         try:
+            progress('connecting')
             event = json.loads(read('/gradio_api/call/infer', {
                 'data': [prompt, seed, False, 512, 512, 4]})).get('event_id')
             if not isinstance(event, str) or not re.fullmatch(r'[a-zA-Z0-9_-]{1,128}', event):
                 raise RuntimeError('space_unavailable')
-            stream = read('/gradio_api/call/infer/' + event).decode()
+            progress('waiting_provider')
             result = None
-            for block in stream.replace('\r\n', '\n').split('\n\n'):
-                lines = block.splitlines()
-                kind = next((line[7:] for line in lines if line.startswith('event: ')), '')
-                if kind == 'error':
-                    raise RuntimeError('space_quota')
-                if kind == 'complete':
-                    result = json.loads('\n'.join(line[6:] for line in lines if line.startswith('data: ')))
+            request = urllib.request.Request(ORIGIN + '/gradio_api/call/infer/' + event,
+                headers={'Accept':'text/event-stream','User-Agent':'Caspy-Demo/1.0'})
+            # Consume complete SSE events immediately; waiting for EOF can hang
+            # even after the provider has already returned the finished image.
+            with opener.open(request, timeout=30) as response:
+                kind, lines, size = '', [], 0
+                while True:
+                    if time.monotonic() > deadline: raise RuntimeError('space_timeout')
+                    raw = response.readline(LIMIT + 1)
+                    size += len(raw)
+                    if size > LIMIT: raise RuntimeError('space_unavailable')
+                    if not raw: break
+                    line = raw.decode().rstrip('\r\n')
+                    if line.startswith('event:'): kind = line[6:].strip()
+                    elif line.startswith('data:'): lines.append(line[5:].lstrip(' '))
+                    elif not line:
+                        if kind == 'error': raise RuntimeError('space_quota')
+                        if kind == 'complete':
+                            result = json.loads('\n'.join(lines)); break
+                        kind, lines = '', []
             if not isinstance(result, list) or len(result) < 2 or result[1] != seed:
                 raise RuntimeError('space_unavailable')
             file = result[0]
@@ -64,7 +83,9 @@ class SpaceSchnell:
             # Never fetch arbitrary model-returned URLs or send credentials.
             if parsed.scheme != 'https' or parsed.netloc != urlsplit(ORIGIN).netloc or not parsed.path.startswith('/gradio_api/file=') or parsed.query or parsed.fragment:
                 raise RuntimeError('invalid_image')
+            progress('downloading')
             raw = read(parsed.path)
+            progress('validating')
             with tempfile.TemporaryDirectory() as folder:
                 source = Path(folder) / 'source.png'
                 source.write_bytes(raw)
@@ -74,6 +95,10 @@ class SpaceSchnell:
                     raise RuntimeError('invalid_image')
         except urllib.error.HTTPError as error:
             raise RuntimeError('space_quota' if error.code in (401, 403, 429) else 'space_unavailable') from None
+        except TimeoutError:
+            raise RuntimeError('space_timeout') from None
+        except urllib.error.URLError as error:
+            raise RuntimeError('space_timeout' if isinstance(error.reason,TimeoutError) else 'space_unavailable') from None
         except (OSError, ValueError):
             raise RuntimeError('space_unavailable') from None
         return {'ok': True, 'model': self.model, 'provider': self.provider,

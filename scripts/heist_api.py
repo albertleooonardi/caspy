@@ -429,7 +429,7 @@ class Handler(BaseHTTPRequestHandler):
         except PermissionError as error:
             self.json_response(401, {'detail': str(error)})
         except (ValueError, RuntimeError):
-            self.json_response(503, {'detail': 'Local NFT service unavailable. Check Anvil and reconnect.'})
+            self.json_response(503, {'detail': 'A game or testnet connection is temporarily unavailable. Your saved heist and artwork are unchanged; refresh status.' if nft and nft.config['chain_id']==84532 else 'Local NFT service unavailable. Check Anvil and reconnect.'})
 
     def do_POST(self):
         origin = self.headers.get('Origin', '')
@@ -556,7 +556,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.json_response(400, {'detail': str(error) if isinstance(error, ValueError) else 'Invalid request.'})
         except (RuntimeError, TimeoutError):
             if not streaming:
-                self.json_response(503, {'detail': 'Local NFT service unavailable. Check Anvil.'})
+                self.json_response(503, {'detail': 'A game or testnet connection is temporarily unavailable. Check the saved result before repeating the operation.' if getattr(self.server,'nft',None) and self.server.nft.config['chain_id']==84532 else 'Local NFT service unavailable. Check Anvil.'})
 
 
 def main():

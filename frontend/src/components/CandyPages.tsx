@@ -4,9 +4,11 @@ import { formatEther, parseEther } from 'viem';
 import { IS_NFT_ENABLED, LIVE_SESSION_KEY, request, type Session } from '../lib/game';
 import { mintVoucher, tradeCandy, CANDY_NETWORK, LOCAL_TEST_WALLET, PROMPT_LICENSE, type Voucher } from '../lib/wallet';
 import { RewardJourney } from './RewardJourney';
+import { syncReward, type MintStatus } from '../lib/rewardSync';
+import '../styles/reward-progress.css';
 
 export type Assessment = { grade: number; grade_label: string; score: number; components: Record<string, number>; comparison_count: number; closest_similarity: number; rule_version: string };
-export type EarnedCandy = { session_id: string; state: string; assessment: Assessment; image_url: string | null; error: string | null; minted: boolean; token_id: string | null; attempts: number; generator_model: string; generator_provider?: string; generation_local: boolean };
+export type EarnedCandy = { session_id: string; state: string; assessment: Assessment; image_url: string | null; error: string | null; minted: boolean; token_id: string | null; attempts: number; generator_model: string; generator_provider?: string; generation_local: boolean; generation_phase?: string; generation_started_at?: number | null };
 type Token = { generator?: { model: string; provider?: string }; token_id: string; owner: string; creator: string; grade: number; score: number; name: string; image_url: string | null; assessment: Assessment; prompt_license: string; contract: `0x${string}`; market: `0x${string}`; price_wei?: string; listing_id?: string; seller?: string; listing?: { listing_id: string; seller: string; price_wei: string } | null };
 type Config = { enabled: boolean; configured: boolean; max_supply: number; remaining: number; contract?: `0x${string}`; market?: `0x${string}` };
 const message = (error: unknown) => error instanceof Error ? error.message : 'The operation could not finish. Reload to check your saved state.';
@@ -23,32 +25,78 @@ function Notice({ error }: { error: string }) { return error ? <p className="err
 function Score({ assessment: a }: { assessment: Assessment }) {
   return <div className="candy-score"><div className="candy-grade"><span>GRADE</span><b>{a.grade_label}</b><span>{a.score} / 100</span></div><div><h3>Earned by your words.</h3><div className="candy-bars">{Object.entries(a.components).map(([name, value]) => <label key={name}><span>{name}<b>{value} / {name === 'novelty' ? 40 : 20}</b></span><meter min="0" max={name === 'novelty' ? 40 : 20} value={value} /></label>)}</div><small>Novelty compares {a.comparison_count} earlier winning prompts in this season. This is a model assessment and text-similarity score, not proof of worldwide originality.</small></div></div>;
 }
+function GenerationProgress({ candy }: { candy: EarnedCandy }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
+  const phase = candy.generation_phase || 'waiting_provider';
+  const labels: Record<string, string> = { queued: 'Waiting for the image worker', connecting: 'Connecting to FLUX', waiting_provider: 'Waiting for FLUX', downloading: 'Receiving your candy artwork', validating: 'Checking the finished image', saving: 'Saving your candy securely' };
+  const seconds = candy.generation_started_at ? Math.max(0, Math.floor(now / 1000 - candy.generation_started_at)) : null;
+  const stage = ['downloading', 'validating', 'saving'].includes(phase) ? 2 : phase === 'queued' ? 0 : 1;
+  return <div className="generation-progress"><div className="generation-stages" aria-hidden="true">{['Queued', 'FLUX', 'Save artwork'].map((label, index) => <span key={label} data-active={stage === index} data-done={stage > index}>{index < stage ? <CheckCircle2 size={14} /> : <i />}{label}</span>)}</div><p role="status"><LoaderCircle className="spin" size={17} /> {labels[phase] || 'Preparing your candy'}</p>{seconds !== null && <small aria-hidden="true">Elapsed {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}</small>}<p className="generation-explanation">{candy.generation_local ? 'Local generation can take several minutes.' : 'The free provider shares GPU capacity. Queue and generation time vary.'} Your grade is saved. You can leave this page and return; refreshing status does not generate another image.</p></div>;
+}
 export function CandyResult({ wallet, openWallet }: { wallet: string; openWallet: () => void }) {
   const [syncError, setSyncError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
+  const [imageVersion, setImageVersion] = useState(0);
   const [game, setGame] = useState<(Session & { candy?: EarnedCandy; candy_error?: string }) | null>(null);
   const [error, setError] = useState(''); const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(''); const [accept, setAccept] = useState(false); const [retry, setRetry] = useState(false);
-  async function load() {
-    const id = new URLSearchParams(location.search).get('session') || localStorage.getItem(LIVE_SESSION_KEY);
-    if (!id) { setGame(null); return; }
-    const next = await request<Session & { candy?: EarnedCandy; candy_error?: string }>(`/game/session/${id}`);
-    if (next.status === 'won' && next.candy?.state === 'ready') {
-      const status = await request<{ status: string; minted: boolean; token_id?: string; tx_hash?: string }>(`/mint/status/${id}`);
-      next.minted = status.minted; next.token_id = status.token_id;
-      if (status.status === 'failed') { setBusy(''); setError('The mint reverted. Your saved image is unchanged; you can retry minting.'); }
-      if (status.status === 'pending' && status.tx_hash) setBusy('Waiting for mint confirmation…');
-    }
-    setGame(next);
+  const loadEpoch = useRef(0);
+  const inFlight = useRef<Promise<void> | null>(null);
+  function load(): Promise<void> {
+    if (inFlight.current) return inFlight.current;
+    const epoch = loadEpoch.current;
+    const current = () => epoch === loadEpoch.current;
+    const operation = (async () => {
+      const id = new URLSearchParams(location.search).get('session') || localStorage.getItem(LIVE_SESSION_KEY);
+      if (!id) { if (current()) { setGame(null); setLoading(false); } return; }
+      const status = await syncReward(
+        () => request<Session & { candy?: EarnedCandy; candy_error?: string }>(`/game/session/${id}`, undefined, undefined, AbortSignal.timeout(20000)),
+        ident => request<MintStatus>(`/mint/status/${ident}`, undefined, undefined, AbortSignal.timeout(12000)),
+        next => { setGame(next); setLoading(false); setSyncError(''); if (next.tx_hash && !next.minted) setBusy('Waiting for mint confirmation…'); }, current,
+        () => setSyncError('Your artwork is saved. Blockchain confirmation is temporarily unavailable; refresh status before sending another mint.'),
+      );
+      if (!current()) return;
+      if (status?.status === 'failed') { setBusy(''); setError('The mint reverted. Your saved image is unchanged; you can retry minting.'); }
+      if (status?.status === 'pending' && status.tx_hash) setBusy('Waiting for mint confirmation…');
+    })().finally(() => { if (inFlight.current === operation) inFlight.current = null; });
+    inFlight.current = operation;
+    return operation;
   }
-  useEffect(() => { let active = true; load().catch(e => active && setError(message(e))).finally(() => active && setLoading(false)); return () => { active = false; }; }, [wallet]);
+  useEffect(() => {
+    loadEpoch.current++; inFlight.current = null; setLoading(true); setGame(null);
+    const epoch = loadEpoch.current;
+    load().catch(e => { if (epoch === loadEpoch.current) setError(message(e)); }).finally(() => { if (epoch === loadEpoch.current) setLoading(false); });
+    return () => { loadEpoch.current++; inFlight.current = null; };
+  }, [wallet]);
   useEffect(() => {
     if (game?.candy?.state !== 'generating' && busy !== 'Waiting for mint confirmation…') return;
-    const timer = setInterval(() => { load().then(() => setSyncError('')).catch(() => setSyncError('Status updates are paused. Your artwork may still be running; refresh to check before retrying.')); }, 5000);
-    return () => clearInterval(timer);
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      if (!stopped && document.visibilityState !== 'hidden') {
+        try { await load(); }
+        catch { if (!stopped) setSyncError('Status updates are paused. Your artwork may still be running; refresh to check before retrying.'); }
+      }
+      if (!stopped) timer = setTimeout(() => { void poll(); }, 4000);
+    };
+    timer = setTimeout(() => { void poll(); }, 2500);
+    return () => { stopped = true; clearTimeout(timer); };
   }, [game?.candy?.state, busy, wallet]);
   useEffect(() => { if (game?.minted) setBusy(''); }, [game?.minted]);
+  async function refreshStatus() {
+    setRefreshing(true);
+    try { await load(); }
+    catch (error) { setSyncError(message(error)); }
+    finally { setRefreshing(false); }
+  }
   async function generate() {
     if (!game) return; setBusy('Requesting your artwork…'); setError('');
-    try { await request('/candy/generate', { session_id: game.id, accept_provider: accept, retry }); await load(); }
+    try {
+      const updated = await request<EarnedCandy>('/candy/generate', { session_id: game.id, accept_provider: accept, retry });
+      setGame(previous => previous?.id === game.id ? { ...previous, candy: updated } : previous);
+      setRetry(false);
+    }
     catch (e) { setError(message(e)); } finally { setBusy(''); }
   }
   async function mint() {
@@ -70,7 +118,7 @@ export function CandyResult({ wallet, openWallet }: { wallet: string; openWallet
   const candy = game.candy;
   const local = candy?.generation_local === true;
   const freeSpace = candy?.generator_provider === 'huggingface-zerogpu-space';
-  return <div className="candy-page shell"><span className="eyebrow">THE SPOILS OF YOUR WORDS · {CANDY_NETWORK.toUpperCase()}</span><h1>A candy only your<br />story could inspire<span className="orange-text">.</span></h1><RewardJourney stage={game.minted ? 3 : game.candy?.state === 'ready' ? 2 : 1} /><p className="candy-lead">You persuaded Caspy. Your winning prompt shapes one candy character in Caspy’s illustrated Halloween style. Your grade is saved before the image is generated.</p><Notice error={error || game.candy_error || syncError} />{candy && <div className="candy-result-grid"><div className="candy-art">{candy.image_url ? <img src={candy.image_url} alt={`Your AI-generated grade ${candy.assessment.grade_label} candy`} /> : <><Candy size={90} strokeWidth={1} /><b>{candy.state === 'generating' ? 'Conjuring your candy…' : 'An earned candy, waiting to take shape.'}</b><span>{candy.state === 'generating' ? 'Your artwork request is running. You can return to this page later.' : 'No preview is generated until you choose to send your prompt.'}</span></>}</div><div><Score assessment={candy.assessment} /><div className="claim-box"><h3>{game.minted ? 'Your candy is on-chain.' : candy.state === 'ready' ? 'One final step. Make it yours.' : 'From your words to sugar.'}</h3>{game.minted ? <><p>Token #{game.token_id}. Artwork, prompt hash, grade and metadata are committed to your NFT.</p><a className="button button-primary" href="/collection">Open your collection <ArrowUpRight size={17} /></a></> : candy.state === 'ready' ? <><p>Mint this exact artwork on {CANDY_NETWORK} using test ETH. One candy per wallet and heist. No rerolls.</p><button className="button button-primary" onClick={mint} disabled={!!busy}>Mint my candy</button></> : candy.state === 'needs_configuration' ? <p role="status">{local ? 'Your grade is saved. Prepare local FLUX.1-schnell with bash scripts/shell/setup-flux.sh and restart Caspy. No inference credits are needed.' : 'Your grade is saved. Hosted generation needs HF_TOKEN with Inference Providers permission and provider credits.'}</p> : candy.state === 'generating' ? <p role="status"><LoaderCircle className="spin" size={18} /> FLUX is creating your image. Your grade is saved. You can leave this page and return when it is ready.</p> : <><p>{local ? 'FLUX.1-schnell creates this artwork offline on the Mac running Caspy. No paid image API is called. Generation may take several minutes on an 8 GB Mac.' : freeSpace ? 'The redacted winning prompt is sent to the public Hugging Face Schnell Space. Free requests share quotas and queues; generation may be unavailable. No paid fallback is used.' : 'The redacted winning prompt is sent to Hugging Face’s fal-ai provider. Hosted generation uses provider credits.'} The image seed never changes your grade.</p><label className="candy-consent"><input type="checkbox" checked={accept} onChange={e => setAccept(e.target.checked)} /> {local ? 'I agree to generate candy from my redacted winning prompt locally. I have rights to use this text.' : 'I agree to send my redacted winning prompt for hosted image generation. I have rights to use this text.'}</label>{['failed', 'uncertain'].includes(candy.state) && <><Notice error={candy.error || ''} /><label className="candy-consent"><input type="checkbox" checked={retry} onChange={e => setRetry(e.target.checked)} /> {local ? 'Retry this failed local request using the same prompt, seed and saved grade. No provider credits are used.' : freeSpace ? 'Retry this request using the same seed and grade, subject to the free Space quota. No paid fallback is used.' : 'Retry this failed request; another provider charge may apply.'} Maximum three requests per candy.</label></>}<button className="button button-primary" onClick={generate} disabled={!!busy || !accept || (['failed', 'uncertain'].includes(candy.state) && !retry)}>{candy.attempts ? 'Retry image request' : 'Generate my earned candy'}</button></>}{busy && <p role="status">{busy}</p>}</div></div></div>}<p className="candy-footnote"><ShieldCheck size={17} /> Finite collection: 1,000 candies. C: 0–59 · B: 60–74 · A: 75–89 · S: 90–100. Grades are not random rarity odds. Research sharing is a separate choice.</p></div>;
+  return <div className="candy-page shell"><span className="eyebrow">THE SPOILS OF YOUR WORDS · {CANDY_NETWORK.toUpperCase()}</span><h1>A candy only your<br />story could inspire<span className="orange-text">.</span></h1><RewardJourney stage={game.minted ? 3 : game.candy?.state === 'ready' ? 2 : 1} /><p className="candy-lead">You persuaded Caspy. Your winning prompt shapes one candy character in Caspy’s illustrated Halloween style. Your grade is saved before the image is generated.</p><Notice error={error || game.candy_error || syncError} /><div className="reward-status-actions"><span>Your reward and grade are saved.</span><button type="button" className="text-button" onClick={() => void refreshStatus()} disabled={refreshing || !!busy && busy !== "Waiting for mint confirmation…"}><RotateCw size={14} className={refreshing ? "spin" : ""} />{refreshing ? "Checking status…" : "Refresh status"}</button></div>{candy && <div className="candy-result-grid"><div className="candy-art">{candy.image_url ? <><img key={imageVersion} src={candy.image_url} alt={`Your AI-generated grade ${candy.assessment.grade_label} candy`} decoding="async" onLoad={() => setImageFailed(false)} onError={() => setImageFailed(true)} />{imageFailed && <div className="artwork-delivery-error" role="status"><p>Your artwork is saved, but this image could not load.</p><button type="button" className="button button-light" onClick={() => { setImageFailed(false); setImageVersion(value => value + 1); }}>Reload saved artwork</button></div>}</> : <><Candy size={90} strokeWidth={1} /><b>{candy.state === 'generating' ? 'Conjuring your candy…' : 'An earned candy, waiting to take shape.'}</b><span>{candy.state === 'generating' ? 'Your artwork request is running. You can return to this page later.' : 'No preview is generated until you choose to send your prompt.'}</span></>}</div><div><Score assessment={candy.assessment} /><div className="claim-box"><h3>{game.minted ? 'Your candy is on-chain.' : candy.state === 'ready' ? 'One final step. Make it yours.' : 'From your words to sugar.'}</h3>{game.minted ? <><p>Token #{game.token_id}. Artwork, prompt hash, grade and metadata are committed to your NFT.</p><a className="button button-primary" href="/collection">Open your collection <ArrowUpRight size={17} /></a></> : candy.state === 'ready' ? <><p>Mint this exact artwork on {CANDY_NETWORK} using test ETH. One candy per wallet and heist. No rerolls.</p><button className="button button-primary" onClick={mint} disabled={!!busy}>Mint my candy</button></> : candy.state === 'needs_configuration' ? <p role="status">{local ? 'Your grade is saved. Prepare local FLUX.1-schnell with bash scripts/shell/setup-flux.sh and restart Caspy. No inference credits are needed.' : 'Your grade is saved. Hosted generation needs HF_TOKEN with Inference Providers permission and provider credits.'}</p> : candy.state === 'generating' ? <GenerationProgress candy={candy} /> : <><p>{local ? 'FLUX.1-schnell creates this artwork offline on the Mac running Caspy. No paid image API is called. Generation may take several minutes on an 8 GB Mac.' : freeSpace ? 'The redacted winning prompt is sent to the public Hugging Face Schnell Space. Free requests share quotas and queues; generation may be unavailable. No paid fallback is used.' : 'The redacted winning prompt is sent to Hugging Face’s fal-ai provider. Hosted generation uses provider credits.'} The image seed never changes your grade.</p><label className="candy-consent"><input type="checkbox" checked={accept} onChange={e => setAccept(e.target.checked)} /> {local ? 'I agree to generate candy from my redacted winning prompt locally. I have rights to use this text.' : 'I agree to send my redacted winning prompt for hosted image generation. I have rights to use this text.'}</label>{['failed', 'uncertain'].includes(candy.state) && <><Notice error={candy.error || ''} /><label className="candy-consent"><input type="checkbox" checked={retry} onChange={e => setRetry(e.target.checked)} /> {local ? 'Retry this failed local request using the same prompt, seed and saved grade. No provider credits are used.' : freeSpace ? 'Retry this request using the same seed and grade, subject to the free Space quota. No paid fallback is used.' : 'Retry this failed request; another provider charge may apply.'} Maximum three requests per candy.</label></>}<button className="button button-primary" onClick={generate} disabled={!!busy || !accept || (['failed', 'uncertain'].includes(candy.state) && !retry)}>{candy.attempts ? 'Retry image request' : 'Generate my earned candy'}</button></>}{busy && <p role="status">{busy}</p>}</div></div></div>}<p className="candy-footnote"><ShieldCheck size={17} /> Finite collection: 1,000 candies. C: 0–59 · B: 60–74 · A: 75–89 · S: 90–100. Grades are not random rarity odds. Research sharing is a separate choice.</p></div>;
 }
 const tokenPrice = (token: Token) => BigInt(token.price_wei || token.listing?.price_wei || '0');
 

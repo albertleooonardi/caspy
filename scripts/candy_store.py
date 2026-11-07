@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from bifrost_setup import environment
@@ -60,6 +61,8 @@ class CandyStore:
         self.cap=info['max_supply']
         self.namespace=f"{nft.config['chain_id']}:{nft.config['contract'].lower()}:{nft.config['deployment_block_hash']}"
         self.pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='caspy-flux')
+        self.progress_lock=threading.Lock()
+        self.job_progress={}
         self.budget=max(1,min(1000,int(environment(ROOT).get('CASPY_FLUX_DAILY_LIMIT','10'))))
         with platform.db() as db:
             if self.database_assets:
@@ -114,10 +117,20 @@ class CandyStore:
     def public(self,row):
         assessment=json.loads(row['assessment'])
         state='needs_configuration' if row['state']=='earned' and not self.renderer.configured else row['state']
+        with self.progress_lock: progress=dict(self.job_progress.get(row['id'],{}))
+        generator={}
+        if row['metadata_hash']:
+            try: generator=json.loads(self.blob(row['metadata_hash'],'json')).get('generator',{})
+            except (Fault,ValueError,KeyError): pass
         return {'session_id':row['id'],'state':state,'assessment':assessment,'attempts':row['attempts'],
                 'image_url':f"/api/candy/images/{row['image_hash']}.png" if row['image_hash'] else None,
                 'metadata_uri':row['uri'],'prompt_hash':'0x'+row['prompt_hash'],'error':row['error'],
-                'generator_model':self.generator_model(row),'generator_provider':getattr(self.renderer,'provider','unknown'),'generation_local':self.generation_local(row),'seed':row['seed'],'minted':bool(row['token_id']),'token_id':row['token_id']}
+                'generator_model':generator.get('model',getattr(self.renderer,'model',MODEL)),'generator_provider':generator.get('provider',getattr(self.renderer,'provider','unknown')),'generation_local':generator.get('provider')=='local-mlx' if generator else getattr(self.renderer,'local',False),'seed':row['seed'],'minted':bool(row['token_id']),'token_id':row['token_id'],
+                'generation_phase':progress.get('phase','queued') if state=='generating' else state,'generation_started_at':progress.get('started_at')}
+
+    def progress(self,ident,phase):
+        with self.progress_lock:
+            self.job_progress[ident]={'phase':phase,'started_at':self.job_progress.get(ident,{}).get('started_at',int(time.time()))}
 
     def generation_local(self,row=None):
         if row and row['metadata_hash']:
@@ -156,6 +169,7 @@ class CandyStore:
             if used>=self.budget: raise Fault(429,'The daily image-generation budget is exhausted. Your earned grade is saved.')
             db.execute("UPDATE candy_jobs SET state='generating',attempts=attempts+1,error=NULL WHERE id=?",(ident,))
             db.execute('INSERT INTO candy_attempts VALUES (?,?)',(ident,int(time.time())))
+        self.progress(ident,'queued')
         self.pool.submit(self._run,ident)
         return self.public(self.row(ident,user))
 
@@ -165,7 +179,10 @@ class CandyStore:
         try:
             fd,name=tempfile.mkstemp(dir=self.root,suffix='.png');os.close(fd);target=Path(name)
             try:
-                generated=self.renderer.render(art_prompt,row['seed'],target)
+                self.progress(ident,'connecting')
+                render_progress=getattr(self.renderer,'render_with_progress',None)
+                generated=render_progress(art_prompt,row['seed'],target,lambda phase:self.progress(ident,phase)) if render_progress else self.renderer.render(art_prompt,row['seed'],target)
+                self.progress(ident,'saving')
                 data=target.read_bytes()
                 if not data.startswith(b'\x89PNG\r\n\x1a\n') or not 100<=len(data)<=15_000_000: raise RuntimeError('invalid_image')
                 image_hash=hashlib.sha256(data).hexdigest()
@@ -182,7 +199,7 @@ class CandyStore:
                 with self.platform.db() as db: db.execute("UPDATE candy_jobs SET state='ready',image_hash=?,metadata_hash=?,uri=?,error=NULL WHERE id=?",(image_hash,metadata_hash,uri,ident))
             finally: target.unlink(missing_ok=True)
         except Exception as error:
-            uncertain=str(error)=='uncertain'
+            uncertain=str(error) in ('uncertain','space_timeout')
             safe='The image request was interrupted; retrying may use provider credits again.' if uncertain else 'The provider could not return an acceptable candy image. Check configuration, credits and safety filters. Your grade has not changed.'
             safe={
                 'authentication':'Hugging Face rejected HF_TOKEN. Check the server-side token; your earned grade is saved.',
@@ -195,8 +212,11 @@ class CandyStore:
                 'configuration':'The hosted image client is not configured. Check HF_TOKEN and install scripts/requirements-candy.txt.',
                 'space_quota':'The free image Space is out of quota or denied this request. Your grade is saved. Retry later; no paid fallback was used.',
                 'space_unavailable':'The free image Space is unavailable or its API changed. Your grade is saved. No paid fallback was used.',
+                'space_timeout':'The free image Space did not finish within the request window. It may still be processing. Your grade is saved; check status before explicitly retrying.',
             }.get(str(error),safe)
             with self.platform.db() as db: db.execute('UPDATE candy_jobs SET state=?,error=? WHERE id=?',('uncertain' if uncertain else 'failed',safe,ident))
+        finally:
+            with self.progress_lock: self.job_progress.pop(ident,None)
 
     def _write(self,path,data):
         if self.database_assets:

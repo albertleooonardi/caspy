@@ -27,8 +27,10 @@ export default async function proxy(request: IncomingMessage, response: ServerRe
     const path=routedPath===null ? incoming.pathname.slice(4) : '/'+routedPath;
     const destination = new URL(path + incoming.search, backend);
     if(destination.origin!==backend.origin) throw new Error('Invalid API path.');
+    const publicAsset=request.method==='GET' && /^\/candy\/(?:images\/[a-f0-9]{64}\.png|metadata\/[a-f0-9]{64}\.json)$/.test(destination.pathname) && !destination.search;
     const headers = new Headers();
     for(const name of ['cookie','origin','content-type','idempotency-key','accept']) {
+      if(publicAsset && name==='cookie') continue;
       const value=request.headers[name];
       if(typeof value==='string') headers.set(name,value);
     }
@@ -42,11 +44,16 @@ export default async function proxy(request: IncomingMessage, response: ServerRe
     const upstream=await fetch(destination,{method:request.method,headers,
       body:request.method==='POST'?Buffer.concat(chunks):undefined,redirect:'manual',signal:AbortSignal.timeout(290_000)});
     if(upstream.status>=300&&upstream.status<400) { fail(502,'The game service returned an unexpected redirect.');return; }
+    const contentType=upstream.headers.get('content-type')||'application/json';
+    const expectedType=destination.pathname.endsWith('.png') ? 'image/png' : 'application/json';
+    if(publicAsset && upstream.status===200 && contentType.split(';')[0].trim()!==expectedType) { fail(502,'Saved artwork delivery is temporarily unavailable. Refresh its status before generating again.');return; }
     response.statusCode=upstream.status;
-    response.setHeader('Content-Type',upstream.headers.get('content-type')||'application/json');
-    response.setHeader('Cache-Control','no-store');
+    response.setHeader('Content-Type',contentType);
+    const cacheable=publicAsset && upstream.status===200 && !upstream.headers.has('set-cookie');
+    response.setHeader('Cache-Control',cacheable ? 'public, max-age=31536000, immutable' : 'no-store');
+    if(cacheable) response.setHeader('Vercel-CDN-Cache-Control','public, max-age=31536000');
     const cookies=upstream.headers.getSetCookie();
-    if(cookies.length) response.setHeader('Set-Cookie',cookies);
+    if(cookies.length && !publicAsset) response.setHeader('Set-Cookie',cookies);
     response.flushHeaders();
     if(upstream.body) await pipeline(Readable.fromWeb(upstream.body as Parameters<typeof Readable.fromWeb>[0]),response);
     else response.end();

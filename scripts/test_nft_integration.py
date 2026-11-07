@@ -146,6 +146,12 @@ class NFTIntegration(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.driver('mint', voucher=tampered)
         transaction = self.driver('mint', voucher=voucher)
+        # Recover after a browser loses the transaction-submit callback.
+        recovered=self.api('/mint/status/'+game['id'])
+        self.assertTrue(recovered['minted'])
+        commitments=self.server.candy.commitments(game['id'])
+        with self.assertRaises(ValueError):
+            self.server.nft.call('status',session_id=game['id'],to=address,**{**commitments,'score':0})
         status = self.api('/mint/submit', {'session_id': game['id'], 'tx_hash': transaction['hash']})
         self.assertTrue(status['minted'])
         self.assertEqual(status['status'], 'confirmed')
