@@ -11,8 +11,9 @@ import secrets
 import threading
 import time
 import urllib.request
+import urllib.error
 
-from bifrost_setup import check, resolve, route, validate_verdict, VERDICT_SCHEMA, NoRedirect, private_write, environment
+from bifrost_setup import check, resolve, route, validate_verdict, VERDICT_SCHEMA, NoRedirect, private_write, environment, reasoning_options
 from pathlib import Path
 from platform_store import Platform, Fault
 from candy_rules import CANDY_VERDICT_SCHEMA, validate_candy_verdict
@@ -73,8 +74,9 @@ class Gateway:
         }
 
     def call(self, key, messages, **options):
-        body = dict(model='/'.join(route(self.config, key)[0]), messages=messages,
-                    max_tokens=4096, reasoning={'enabled': False})
+        provider,model=route(self.config,key)[0]
+        body = dict(model=provider+'/'+model, messages=messages,
+                    max_tokens=4096, reasoning=reasoning_options(provider))
         body.update(options)
         req = urllib.request.Request('http://127.0.0.1:8080/v1/chat/completions',
             data=json.dumps(body).encode(), headers={'Content-Type': 'application/json', 'x-bf-vk': self.keys[key]})
@@ -220,13 +222,15 @@ class Games:
                 emit(value)
             try:
                 self.gateway.actor(history, token)
-            except Exception:
+            except Exception as error:
                 if reply:
                     data['messages'] += [{'role': 'user', 'text': prompt}, {'role': 'caspy', 'text': reply}]
                     data['status'] = 'void'
                 else:
                     data['attempts_remaining'] += 1
                     entry['requests'].discard(request_id)
+                if isinstance(error,urllib.error.HTTPError) and error.code==429:
+                    raise RuntimeError('The AI provider has reached a request or quota limit. Your session is saved; reconnect to check your attempts and retry after the limit resets.') from None
                 raise RuntimeError('Caspy could not finish replying. Check Bifrost; reconnect to recover your session.') from None
             data['messages'] += [{'role': 'user', 'text': prompt}, {'role': 'caspy', 'text': reply}]
             metadata = getattr(self.gateway, 'evaluation_metadata', lambda: {})()

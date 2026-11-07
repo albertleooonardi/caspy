@@ -134,6 +134,16 @@ class GamesTest(unittest.TestCase):
             data = games.owned(ident, 'owner')['data']
             self.assertEqual((data['attempts_remaining'], data['status']), (remaining, status))
 
+    def test_provider_quota_error_is_readable_and_refunds_an_unstarted_reply(self):
+        import urllib.error
+        games,gateway,ident=self.setup_game()
+        with patch.object(gateway,'actor',side_effect=urllib.error.HTTPError('http://fixture',429,'private provider message',{},None)):
+            with self.assertRaisesRegex(RuntimeError,'quota limit') as error:
+                games.turn(ident,'owner','Fictional pitch','quota-fixture',lambda _:None)
+        data=games.owned(ident,'owner')['data']
+        self.assertEqual((data['attempts_remaining'],data['status']),(3,'active'))
+        self.assertNotIn('private provider message',str(error.exception))
+
     def test_judge_failure_can_be_retried_without_spending_another_attempt(self):
         games, gateway, ident = self.setup_game(failure='judge', verdict='YIELD')
         result = games.turn(ident, 'owner', 'Pitch', '1', lambda _: None)

@@ -33,7 +33,7 @@ def prepare(env):
     if env.get('CASPY_IMAGE_BACKEND') not in ('hf-space-schnell', 'hf-dev'):
         raise ValueError('Choose a cloud-compatible image backend.')
     database_url(env)
-    for name in ('BIFROST_SETUP_TOKEN', 'BIFROST_ADMIN_PASSWORD', 'BIFROST_CASPY_VK', 'BIFROST_JUDGE_VK', 'OPEN_ROUTER_API_KEY', 'CASPY_NFT_SIGNER_PRIVATE_KEY'):
+    for name in ('BIFROST_SETUP_TOKEN', 'BIFROST_ADMIN_PASSWORD', 'BIFROST_CASPY_VK', 'BIFROST_JUDGE_VK', 'CASPY_NFT_SIGNER_PRIVATE_KEY'):
         if not env.get(name): raise ValueError('Missing server environment variable: ' + name)
     data=ROOT/'data'
     data.mkdir(parents=True,exist_ok=True)
