@@ -4,6 +4,7 @@ import { foundry, baseSepolia } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { parseSiweMessage, validateSiweMessage } from 'viem/siwe';
 import { caspyAbi, voucherTypes, marketAbi } from '../src/lib/contract.ts';
+import { readBlockRanges } from '../src/lib/chainEvents.ts';
 
 export function chainForConfig(config) {
   const url = new URL(config.rpc_url);
@@ -22,6 +23,11 @@ export async function execute(input) {
   const marketRead=(functionName,args=[]) => client.readContract({ address:getAddress(config.market),abi:marketAbi,functionName,args });
   const sessionId=input.session_id ? keccak256(toBytes(input.session_id)) : undefined;
   const wallet=createWalletClient({ chain,transport:http(config.rpc_url,{ retryCount:0 }) });
+  const events=async (parameters, head) => readBlockRanges(
+    (fromBlock,toBlock)=>client.getContractEvents({...parameters,fromBlock,toBlock}),
+    BigInt(config.deployment_block),head ?? await client.getBlockNumber(),
+    chain.id===84532 ? 200n : 10000n,
+  );
   if(action==='wallets') {
     if(chain.id!==31337) throw new Error('No unlocked public wallets.');
     return { wallets:(await wallet.getAddresses()).slice(2) };
@@ -34,7 +40,7 @@ export async function execute(input) {
   if(action==='info') return { contract,market:config.market,max_supply:Number(await read('maxSupply')),minted:Number(await read('totalMinted')) };
   if(action==='history') {
     const head=await client.getBlockNumber();
-    const logs=(await client.getContractEvents({ address:getAddress(config.market),abi:marketAbi,eventName:'CandySold',fromBlock:BigInt(config.deployment_block),toBlock:head,strict:true }))
+    const logs=(await events({ address:getAddress(config.market),abi:marketAbi,eventName:'CandySold',strict:true },head))
       .filter(log=>!log.removed && log.blockNumber!==null)
       .sort((a,b)=>a.blockNumber===b.blockNumber ? a.logIndex-b.logIndex : a.blockNumber<b.blockNumber ? -1:1);
     const selected=logs.slice(-1000), blocks=new Map();
@@ -70,7 +76,7 @@ export async function execute(input) {
     return { ...v,nonce:String(v.nonce),deadline:String(v.deadline),uri:input.uri,chainId:chain.id,contract,signature };
   }
   const listingRows=async () => {
-    const logs=await client.getContractEvents({ address:getAddress(config.market),abi:marketAbi,eventName:'CandyListed',fromBlock:BigInt(config.deployment_block),toBlock:'latest',strict:true });
+    const logs=await events({ address:getAddress(config.market),abi:marketAbi,eventName:'CandyListed',strict:true });
     const rows=[];
     for(const log of logs) {
       const [seller,tokenId,price,active]=await marketRead('listings',[log.args.listingId]);
@@ -93,7 +99,7 @@ export async function execute(input) {
     return { listings:rows,proceeds_wei:input.to ? String(await marketRead('proceeds',[input.to])) : '0',contract,market:config.market };
   }
   if(action==='collection') {
-    const logs=await client.getContractEvents({ address:contract,abi:caspyAbi,eventName:'CandyMinted',fromBlock:BigInt(config.deployment_block),toBlock:'latest',strict:true });
+    const logs=await events({ address:contract,abi:caspyAbi,eventName:'CandyMinted',strict:true });
     const listings=await listingRows(),rows=[];
     for(const log of logs) {
       const token=await tokenInfo(log.args.tokenId);
@@ -111,7 +117,7 @@ export async function execute(input) {
       if(tx.blockNumber===null) return { status:'pending',tx_hash:input.tx_hash };
       if((await client.getTransactionReceipt({ hash:input.tx_hash })).status==='reverted') return { status:'failed',tx_hash:input.tx_hash };
     }
-    const logs=await client.getContractEvents({ address:contract,abi:caspyAbi,eventName:'CandyMinted',args:{ sessionId,to:getAddress(input.to) },fromBlock:BigInt(config.deployment_block),toBlock:'latest',strict:true });
+    const logs=await events({ address:contract,abi:caspyAbi,eventName:'CandyMinted',args:{ sessionId,to:getAddress(input.to) },strict:true });
     const event=logs.find(log=>log.args.imageHash===input.image_hash && log.args.metadataHash===input.metadata_hash && log.args.promptHash===input.prompt_hash && log.args.grade===input.grade && log.args.score===input.score);
     return event ? { status:'confirmed',minted:true,tx_hash:event.transactionHash,token_id:String(event.args.tokenId),contract,chain_id:chain.id } : { status:'pending',minted:false,...(input.tx_hash ? { tx_hash:input.tx_hash } : {}) };
   }
