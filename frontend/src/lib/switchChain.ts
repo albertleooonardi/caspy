@@ -1,6 +1,6 @@
 import type { Chain } from 'viem';
 
-type NetworkWallet = {
+export type NetworkWallet = {
   getChainId(): Promise<number>;
   switchChain(input: { id: number }): Promise<unknown>;
   addChain(input: { chain: Chain }): Promise<unknown>;
