@@ -86,7 +86,7 @@ test('only successful content-addressed public artwork is cached without account
     assert.equal(headers.get('cookie'),isAsset ? null : 'caspy_account=fictional');
     return new Response(isAsset ? 'png-fixture' : '{}',{
       status:isAsset ? assetStatus : 200,
-      headers:isAsset ? {'Content-Type':assetType} : {'Content-Type':'application/json','Set-Cookie':'caspy_account=rotated; Secure; HttpOnly'},
+      headers:isAsset ? {'Content-Type':assetType,'Set-Cookie':'tunnel_session=fixture; Secure; HttpOnly'} : {'Content-Type':'application/json','Set-Cookie':'caspy_account=rotated; Secure; HttpOnly'},
     });
   }) as typeof fetch;
   try {

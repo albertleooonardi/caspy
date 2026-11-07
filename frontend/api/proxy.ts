@@ -49,7 +49,10 @@ export default async function proxy(request: IncomingMessage, response: ServerRe
     if(publicAsset && upstream.status===200 && contentType.split(';')[0].trim()!==expectedType) { fail(502,'Saved artwork delivery is temporarily unavailable. Refresh its status before generating again.');return; }
     response.statusCode=upstream.status;
     response.setHeader('Content-Type',contentType);
-    const cacheable=publicAsset && upstream.status===200 && !upstream.headers.has('set-cookie');
+    // Public tunnels can attach infrastructure cookies even to anonymous PNGs.
+    // These hash-addressed routes never forward account cookies in either
+    // direction, so those tunnel cookies must not disable immutable caching.
+    const cacheable=publicAsset && upstream.status===200;
     response.setHeader('Cache-Control',cacheable ? 'public, max-age=31536000, immutable' : 'no-store');
     if(cacheable) response.setHeader('Vercel-CDN-Cache-Control','public, max-age=31536000');
     const cookies=upstream.headers.getSetCookie();
