@@ -19,7 +19,10 @@ export default async function proxy(request: IncomingMessage, response: ServerRe
     if(backend.protocol!=='https:'||backend.username||backend.password||backend.pathname!=='/'||backend.search||backend.hash) throw new Error('Invalid backend origin.');
     const incoming = new URL(request.url || '/', 'https://caspy.invalid');
     if(!incoming.pathname.startsWith('/api/')) { fail(404,'Not found.');return; }
-    const destination = new URL(incoming.pathname.slice(4) + incoming.search, backend);
+    const routedPath=incoming.searchParams.get('__caspy_path');
+    incoming.searchParams.delete('__caspy_path');
+    const path=routedPath===null ? incoming.pathname.slice(4) : '/'+routedPath;
+    const destination = new URL(path + incoming.search, backend);
     if(destination.origin!==backend.origin) throw new Error('Invalid API path.');
     const headers = new Headers();
     for(const name of ['cookie','origin','content-type','idempotency-key','accept']) {
