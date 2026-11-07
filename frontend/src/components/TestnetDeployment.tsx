@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { createPublicClient, createWalletClient, custom, getAddress, http, type Abi, type Hex } from 'viem';
 import { baseSepolia } from 'viem/chains';
+import { switchOrAddChain } from '../lib/switchChain';
 
 type Artifact = { abi: Abi; bytecode: Hex; hash: Hex };
 type DeploymentArtifacts = { chain_id: number; signer: Hex; candy: Artifact; market: Artifact };
@@ -21,7 +22,7 @@ export default function TestnetDeployment() {
       const wallet=createWalletClient({ chain:baseSepolia,transport:custom(window.ethereum) });
       const [account]=await wallet.requestAddresses();
       if(!account) throw new Error('Choose your testnet deployer wallet.');
-      if(await wallet.getChainId()!==84532) await wallet.switchChain({ id:84532 });
+      await switchOrAddChain(wallet,baseSepolia);
       const publicClient=createPublicClient({ chain:baseSepolia,transport:http() });
       if(await publicClient.getBalance({address:account})===0n) throw new Error('This wallet needs Base Sepolia test ETH to deploy. Do not use real ETH.');
       if(kind==='market'&&!candy) throw new Error('Deploy the candy contract first.');

@@ -3,6 +3,7 @@ import { base, baseSepolia, foundry } from 'viem/chains';
 import { createSiweMessage } from 'viem/siwe';
 import { request } from './game';
 import { caspyAbi, marketAbi } from './contract';
+import { switchOrAddChain } from './switchChain';
 
 declare global { interface Window { ethereum?: EIP1193Provider } }
 export const LOCAL_NFT = import.meta.env.PUBLIC_NFT_ENABLED === 'true';
@@ -27,7 +28,7 @@ async function accountAndNetwork(selectedAddress?: string) {
   const addresses = useLocalWallet() ? (await client.getAddresses()).slice(2) : await client.requestAddresses();
   const account = useLocalWallet() && selectedAddress ? addresses.find(address => address.toLowerCase() === selectedAddress.toLowerCase()) : addresses[0];
   if (!account) throw new Error('Choose an account in your wallet to continue.');
-  if (await client.getChainId() !== HEIST_CHAIN.id) await client.switchChain({ id: HEIST_CHAIN.id });
+  await switchOrAddChain(client, HEIST_CHAIN);
   return { client, account };
 }
 export async function authenticateWallet(selectedAddress?: string): Promise<string> {
