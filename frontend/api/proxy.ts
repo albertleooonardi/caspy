@@ -21,6 +21,9 @@ export default async function proxy(request: IncomingMessage, response: ServerRe
     if(!incoming.pathname.startsWith('/api/')) { fail(404,'Not found.');return; }
     const routedPath=incoming.searchParams.get('__caspy_path');
     incoming.searchParams.delete('__caspy_path');
+    // Vercel also adds the matched wildcard as `path`. It is routing metadata,
+    // not an application query parameter (exact-match API routes reject it).
+    if (routedPath!==null && incoming.searchParams.get('path')===routedPath) incoming.searchParams.delete('path');
     const path=routedPath===null ? incoming.pathname.slice(4) : '/'+routedPath;
     const destination = new URL(path + incoming.search, backend);
     if(destination.origin!==backend.origin) throw new Error('Invalid API path.');

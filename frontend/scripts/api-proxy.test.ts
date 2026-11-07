@@ -59,7 +59,7 @@ test('Vercel wildcard rewrite preserves nested API paths and query parameters', 
     return new Response('{"ok":true}',{headers:{'Content-Type':'application/json'}});
   }) as typeof fetch;
   try {
-    const result=await originalFetch(`http://127.0.0.1:${address.port}/api/proxy?__caspy_path=candy%2Fmetadata%2Fhash.json&session=abc`);
+    const result=await originalFetch(`http://127.0.0.1:${address.port}/api/proxy?__caspy_path=candy%2Fmetadata%2Fhash.json&path=candy%2Fmetadata%2Fhash.json&session=abc`);
     assert.equal(result.status,200);
     assert.deepEqual(await result.json(),{ok:true});
   } finally {
