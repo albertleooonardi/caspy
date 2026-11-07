@@ -29,6 +29,7 @@ jobs:
       RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
       CASPY_BACKEND_URL: ${{ vars.CASPY_BACKEND_URL }}
       RELEASE_SHA: ${{ github.sha }}
+      CASPY_CODESPACE_NAME: ${{ vars.CASPY_CODESPACE_NAME }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -40,9 +41,15 @@ jobs:
         with:
           python-version: '3.11'
       - name: Deploy this exact commit to Render and verify readiness
+        if: vars.CASPY_BACKEND_PROVIDER != 'codespaces'
         run: python scripts/deploy_render.py
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      - name: Deploy this exact commit to the selected Codespace
+        if: vars.CASPY_BACKEND_PROVIDER == 'codespaces'
+        run: python scripts/deploy_codespace.py
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACES_TOKEN }}
       - name: Install pinned Vercel CLI
         run: npm install --global vercel@65.12.1
       - name: Resolve the verified frontend project

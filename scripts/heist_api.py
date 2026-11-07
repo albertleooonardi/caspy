@@ -332,7 +332,7 @@ class Handler(BaseHTTPRequestHandler):
         nft = self.server.nft
         if self.path == '/health':
             self.json_response(200, {'status': 'ok', 'mode': 'testnet-nft' if nft and nft.config['chain_id']==84532 else 'local-nft' if nft else 'local-ai', 'minting': bool(nft),
-                'chain_id':nft.config['chain_id'] if nft else None,'commit':os.environ.get('RENDER_GIT_COMMIT') or os.environ.get('RAILWAY_GIT_COMMIT_SHA') or None})
+                'chain_id':nft.config['chain_id'] if nft else None,'commit':os.environ.get('CASPY_RELEASE_SHA') or os.environ.get('RENDER_GIT_COMMIT') or os.environ.get('RAILWAY_GIT_COMMIT_SHA') or None})
             return
         try:
             platform = getattr(self.server, 'platform', None)

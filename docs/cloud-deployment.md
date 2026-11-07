@@ -1,5 +1,46 @@
 # Caspy cloud preview — 6 November 2026
 
+**7 November status:** the user approved source publication. Branch
+`codex/cloud-preview-20261106`, draft [PR #1](https://github.com/albertleooonardi/caspy/pull/1).
+[GitHub CI](https://github.com/albertleooonardi/caspy/actions/runs/42234188394)
+passed all four jobs for `3911622`, including Linux Docker and isolated NFT tests.
+The Vercel frontend is READY at https://caspy-prompt-heist.vercel.app; this is
+operator/demo UI, **not activated full cloud gameplay**. Its first deployment
+was assigned Vercel's production target by the API; protection was preserved.
+The connector cannot fetch protected pages with its current alias permissions.
+
+Railway trial expired. Render returned HTTP 402 requiring payment information
+even for the free service; the user cannot add a card. No backend service was
+created and no paid plan was selected. The user selected a **GitHub Codespaces
+demo backend** within included usage. It sleeps/stops and is not always-on
+production hosting. New Docker Spaces are not a free alternative under current
+Hugging Face creation requirements. The existing anonymous Schnell image Space
+was verified separately and remains usable subject to quota.
+
+Codespaces configuration is `.devcontainer/devcontainer.json`, with only port
+8000 forwarded privately by default. `scripts/shell/run-cloud-preview.sh` starts
+the production-mode API/private Bifrost, never Anvil. After confirmed testnet
+configuration and private environment transfer, `scripts/codespace_release.py`
+starts/verifies the exact commit. Only then may port 8000 be made public for the
+Vercel proxy. Ports 8080/8545 remain unforwarded. No keepalive circumvents idle
+timeout or quota. Workspace data is not a substitute for persistent Supabase.
+
+For CI/CD set `CASPY_BACKEND_PROVIDER=codespaces`, `CASPY_CODESPACE_NAME`, and
+`CASPY_BACKEND_URL`; the protected deployment environment needs a scoped
+`CODESPACES_TOKEN` instead of `RENDER_API_KEY`. Vercel still needs `VERCEL_TOKEN`.
+Production environment now has a required owner reviewer and a main-only branch
+policy; Vercel project IDs are configured. `CASPY_CLOUD_RELEASE_ENABLED=false`
+until full deployed-game QA passes. Never print tokens or copy them into source.
+
+The private backend environment is prepared in ignored
+`data/credentials/render-preview.env` (0600; historical filename). The confirmed
+contract JSON is still pending. This file is server-only, never a frontend env
+or CI artifact. Regenerate its contract setting after wallet deployment; a
+Codespace uses port 8000 and its workspace path rather than Docker's `/app`.
+
+The original Render plan and its configuration below remain as a documented
+fallback if billing becomes available, not the currently selected backend.
+
 Target: **full NFT gameplay on Base Sepolia (84532)**. This is a testnet preview,
 not mainnet, a production audit, or a claim that every service is already live.
 

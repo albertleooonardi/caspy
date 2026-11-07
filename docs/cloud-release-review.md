@@ -14,12 +14,13 @@ A focused credential-pattern scan found no candidates in the proposed files;
 this is a safeguard, not a guarantee of a complete security audit.
 
 Automatic approval review rejected the original broad `git add .` and push.
-Publishing is pending your explicit approval of this source-only file list.
-No source upload or preview deployment has occurred. The Vercel project exists
-without a deployment; Railway declined project creation due to expired trial.
+The user then explicitly approved this source-only list. It was committed and
+pushed as `391162282fde418c62650860e00b0c1028330d70`; all four GitHub CI jobs passed.
+The Vercel frontend build is READY. Railway declined project creation due to
+expired trial; Render declined free-service creation until billing is added.
+The user cannot add a card and selected a quota-limited Codespaces demo instead.
 
-After approval: push this branch, run GitHub CI, create the Render free preview
-in your confirmed My Workspace, and deploy the Vercel operator setup preview.
+Follow-up work adapts the reviewed backend to the user-selected Codespace.
 Full-game activation still needs your two Base Sepolia wallet transactions and
 private backend environment configuration.
 

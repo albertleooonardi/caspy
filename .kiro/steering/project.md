@@ -20,6 +20,19 @@ are complete. Preserve the new ignored voucher signer in `data/credentials/`;
 never print it or use Anvil keys on a public chain. Existing local storage remains
 the default for ./run.sh. Later sections describe that local checkpoint.
 
+**7 November cloud update:** initial approved source `3911622` is pushed on
+`codex/cloud-preview-20261106`; draft PR #1; all four GitHub CI jobs passed.
+Vercel frontend build READY at `https://caspy-prompt-heist.vercel.app`, operator
+setup `/deploy-testnet`; full game not activated. Railway trial expired and
+Render requires card details even for free creation; user cannot add a card and
+selected a quota-limited GitHub Codespaces demo backend instead. Corrected CLI
+login is repository owner `albertleooonardi` (old `leokimiaa` login preserved).
+Private server environment is staged in ignored credentials files, not source.
+Only API port 8000 may be forwarded after readiness; never expose Bifrost/Anvil.
+Contracts, backend configuration and deployed full-flow QA remain pending.
+Production CI environment has owner approval/main-only protection; release flag
+is false until verified. See cloud-deployment.md for authoritative live progress.
+
 ## Product and reward rules
 
 Caspy is a Halloween persuasion game and an optional AI evaluation/research
