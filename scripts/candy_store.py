@@ -82,11 +82,31 @@ class CandyStore:
             if platform.database.postgres:
                 # v2 keeps the wallet gate below; v3 keeps only the heist PK.
                 # Preserve every existing job, grade and artwork commitment.
-                db.execute('ALTER TABLE candy_jobs DROP CONSTRAINT IF EXISTS candy_jobs_namespace_wallet_key')
+                self.remove_wallet_limit(db)
             # Never silently repeat a possibly billed request after a crash/restart.
             db.execute("UPDATE candy_jobs SET state='uncertain',error='A prior image request was interrupted. Retry explicitly; hosted requests may use provider credits again.' WHERE state='generating' AND namespace=?",(self.namespace,))
 
     def close(self): self.pool.shutdown(wait=True)
+
+    def remove_wallet_limit(self, db):
+        # SQLite migration produced standalone *_migrated_* indexes, whereas
+        # native PostgreSQL produced constraints. Identify the exact old key
+        # columns, never assume either naming convention or touch the heist PK.
+        indexes=db.execute('''SELECT ix.relname AS index_name,c.conname AS constraint_name,
+            ARRAY(SELECT a.attname FROM unnest(i.indkey) WITH ORDINALITY AS k(attnum,position)
+                JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.attnum
+                WHERE k.position<=i.indnkeyatts ORDER BY k.position) AS key_columns
+            FROM pg_index i JOIN pg_class ix ON ix.oid=i.indexrelid
+            LEFT JOIN pg_constraint c ON c.conindid=i.indexrelid
+            WHERE i.indrelid='candy_jobs'::regclass AND i.indisunique AND NOT i.indisprimary
+                AND i.indexprs IS NULL AND i.indpred IS NULL''').fetchall()
+        quote=lambda value: '"'+value.replace('"','""')+'"'
+        for index in indexes:
+            if len(index['key_columns'])!=2 or set(index['key_columns'])!={'namespace','wallet'}: continue
+            if index['constraint_name']:
+                db.execute('ALTER TABLE candy_jobs DROP CONSTRAINT '+quote(index['constraint_name']))
+            else:
+                db.execute('DROP INDEX '+quote(self.platform.database.schema)+'.'+quote(index['index_name']))
 
     def ensure_win(self,game,user,wallet):
         row=self._reserve_win(game,user,wallet)
@@ -116,7 +136,7 @@ class CandyStore:
                 db.execute('INSERT INTO candy_jobs(id,user_id,namespace,wallet,prompt,prompt_hash,normalized,assessment,state,seed,created) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
                     (game['id'],user['id'],self.namespace,wallet.lower(),prompt,digest,normalized(prompt),json.dumps(assessment),'earned',seed,int(time.time())))
             except Exception as error:
-                if isinstance(error,self.platform.integrity_error): raise Fault(409,'This winning heist already has a candy reward. Refresh its saved status.') from None
+                if isinstance(error,self.platform.integrity_error): raise Fault(503,'Your win is saved, but the candy reward could not be reserved. Please try again later.') from None
                 raise
             return db.execute('SELECT * FROM candy_jobs WHERE id=?',(game['id'],)).fetchone()
 

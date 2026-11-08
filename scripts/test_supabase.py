@@ -51,11 +51,19 @@ class SupabaseCandyTests(SupabaseFixture,test_candy_store.CandyTests):
         first=self.earn()
         with self.platform.db() as db:
             db.execute('ALTER TABLE candy_jobs ADD CONSTRAINT candy_jobs_namespace_wallet_key UNIQUE(namespace,wallet)')
+            db.execute('CREATE UNIQUE INDEX candy_jobs_migrated_0 ON candy_jobs(namespace,wallet)')
+            db.execute('CREATE INDEX candy_wallet_lookup ON candy_jobs(wallet)')
         self.candy.close()
         self.candy=test_candy_store.CandyStore(self.platform,test_candy_store.FakeNFT(),self.root/'assets',self.renderer)
         second=self.candy.ensure_win(test_candy_store.winner('two'),self.user,'wallet-one')
         self.assertNotEqual(first['session_id'],second['session_id'])
         self.assertEqual(self.candy.public(self.candy.row('one')),first)
+        with self.platform.db() as db:
+            indexes={row[0] for row in db.execute("SELECT indexname FROM pg_indexes WHERE schemaname=? AND tablename='candy_jobs'",(self.schema,))}
+            self.assertIn('candy_jobs_pkey',indexes)
+            self.assertIn('candy_wallet_lookup',indexes)
+            self.assertNotIn('candy_jobs_migrated_0',indexes)
+            self.assertNotIn('candy_jobs_namespace_wallet_key',indexes)
 
 @unittest.skipUnless(enabled and os.environ.get('CASPY_RUN_HTTP_TESTS')=='1','Opt in to live Supabase HTTP tests.')
 class SupabaseHTTPTests(SupabaseFixture,test_platform_http.PlatformHTTPTests): pass
