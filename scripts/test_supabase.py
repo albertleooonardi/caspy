@@ -18,6 +18,7 @@ import test_candy_store
 import test_platform_http
 import test_cloud_storage
 import test_wallet_sessions
+import test_social
 from database import Database
 
 
@@ -30,7 +31,7 @@ class SupabaseFixture:
             connection.execute(sql.SQL('REVOKE ALL ON SCHEMA {} FROM PUBLIC, anon, authenticated').format(sql.Identifier(self.schema)))
         self.addCleanup(self.drop_schema)
         factory=lambda target,*args,**kwargs: Platform(self.dsn,*args,schema=self.schema,**kwargs)
-        for module in (test_platform_store,test_candy_store,test_platform_http,test_cloud_storage):
+        for module in (test_platform_store,test_candy_store,test_platform_http,test_cloud_storage,test_social):
             context=patch.object(module,'Platform',factory)
             context.start();self.addCleanup(context.stop)
         super().setUp()
@@ -85,3 +86,14 @@ class SupabaseWalletSessionTests(SupabaseFixture,test_wallet_sessions.WalletSess
             self.assertTrue(row[0])
             for role in ('anon', 'authenticated'):
                 self.assertFalse(db.execute("SELECT has_table_privilege(?, 'wallet_sessions', 'SELECT')", (role,)).fetchone()[0])
+
+
+@unittest.skipUnless(enabled,'Opt in to live Supabase social fixtures.')
+class SupabaseSocialTests(SupabaseFixture,test_social.SocialTests):
+    def test_social_tables_are_private(self):
+        database = Database(self.dsn, schema=self.schema)
+        with database.connect() as db:
+            for table in ('friend_codes','friendships'):
+                self.assertTrue(db.execute("SELECT relrowsecurity FROM pg_class WHERE oid=?::regclass",(table,)).fetchone()[0])
+                for role in ('anon','authenticated'):
+                    self.assertFalse(db.execute("SELECT has_table_privilege(?, ?, 'SELECT')",(role,table)).fetchone()[0])
