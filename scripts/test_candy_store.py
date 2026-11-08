@@ -21,7 +21,7 @@ class FixtureRenderer:
 
 class FakeNFT:
     config={'chain_id':31337,'contract':'0x'+'11'*20,'deployment_block_hash':'0x'+'22'*32,'market':'0x'+'33'*20}
-    def call(self,action,**kwargs): return {'max_supply':2,'minted':0}
+    def call(self,action,**kwargs): return {'max_supply':2,'minted':0,'version':3}
 
 def winner(ident='one',prompt='Trade one sugar moon for a map to the ghost bakery.'):
     return {'id':ident,'status':'won','messages':[{'role':'user','text':prompt},{'role':'caspy','text':'A deal!'}],
@@ -35,6 +35,19 @@ class CandyTests(unittest.TestCase):
         self.user={'id':'owner'}
     def tearDown(self): self.candy.close();self.tmp.cleanup()
     def earn(self): return self.candy.ensure_win(winner(),self.user,'wallet-one')
+    def test_multiple_rewards_same_wallet_are_heist_scoped_and_capped(self):
+        first=self.earn()
+        second=self.candy.ensure_win(winner('two'),self.user,'wallet-one')
+        self.assertNotEqual(first['session_id'],second['session_id'])
+        self.assertEqual(self.earn()['assessment'],first['assessment'])
+        with self.assertRaises(Fault): self.candy.ensure_win(winner('three'),self.user,'wallet-one')
+        self.assertEqual(self.candy.row('one')['wallet'],'wallet-one')
+
+    def test_legacy_contract_keeps_its_limit_until_redeployment(self):
+        self.candy.multiple_rewards=False
+        self.earn()
+        with self.assertRaisesRegex(Fault,'legacy contract'):
+            self.candy.ensure_win(winner('two'),self.user,'wallet-one')
     def generated(self):
         self.earn();self.candy.generate('one',self.user,True)
         for _ in range(100):
@@ -76,6 +89,27 @@ class CandyTests(unittest.TestCase):
         self.assertEqual(self.candy.public(self.candy.row('one'))['state'],'needs_configuration')
         with self.assertRaises(Fault): self.candy.generate('one',self.user,True)
         self.assertEqual(self.renderer.calls,0)
+
+    def test_live_progress_and_duplicate_click_do_not_submit_two_images(self):
+        import threading
+        started,release=threading.Event(),threading.Event()
+        def render_progress(prompt,seed,target,progress):
+            progress('waiting_provider');started.set()
+            if not release.wait(5): raise RuntimeError('fixture timeout')
+            return self.renderer.render(prompt,seed,target)
+        self.renderer.render_with_progress=render_progress
+        self.earn()
+        try:
+            self.candy.generate('one',self.user,True)
+            self.assertTrue(started.wait(2))
+            status=self.candy.generate('one',self.user,True)
+            self.assertEqual(status['generation_phase'],'waiting_provider')
+            self.assertGreater(status['generation_started_at'],0)
+            self.assertEqual(status['attempts'],1)
+        finally: release.set()
+        self.candy.pool.shutdown(wait=True)
+        self.assertEqual(self.renderer.calls,1)
+        self.assertEqual(self.candy.row('one')['state'],'ready')
 
     def test_billing_failure_preserves_grade_and_creates_no_artwork(self):
         assessment=self.earn()['assessment']

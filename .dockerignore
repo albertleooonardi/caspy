@@ -1,0 +1,15 @@
+*
+!deploy/
+!deploy/api.Dockerfile
+!scripts/
+!scripts/*.py
+!scripts/*.txt
+!frontend/
+!frontend/package.json
+!frontend/package-lock.json
+!frontend/scripts/
+!frontend/scripts/nft-bridge.mjs
+!frontend/src/
+!frontend/src/lib/
+!frontend/src/lib/contract.ts
+!bifrost.config.example.json

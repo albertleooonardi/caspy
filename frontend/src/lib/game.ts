@@ -1,6 +1,6 @@
 export type GameStatus = 'active' | 'won' | 'lost' | 'pending_review' | 'void';
 export type Message = { role: 'user' | 'caspy'; text: string };
-export type Session = { id: string; status: GameStatus; attempts_remaining: number; messages: Message[]; minted?: boolean; tx_hash?: string; tier?: 'treat' | 'trick'; token_id?: string; contract?: string; chain_id?: number; research_consent?: boolean; commercial_consent?: boolean; campaign_id?: string; evaluations?: { turn: number; verdict: string; confidence: number }[] };
+export type Session = { id: string; next_reset_at?: number; unlimited_heists?: boolean; status: GameStatus; attempts_remaining: number; messages: Message[]; minted?: boolean; tx_hash?: string; tier?: 'treat' | 'trick'; token_id?: string; contract?: string; chain_id?: number; research_consent?: boolean; commercial_consent?: boolean; campaign_id?: string; evaluations?: { turn: number; verdict: string; confidence: number }[] };
 export type TurnResult = { attempts_remaining: number; status: GameStatus; reply?: string };
 export const IS_NFT_ENABLED = import.meta.env?.PUBLIC_NFT_ENABLED === 'true';
 export const IS_LOCAL_AI = import.meta.env?.PUBLIC_LOCAL_AI === 'true' && !IS_NFT_ENABLED;
@@ -21,18 +21,25 @@ export function newDemo(): Session {
   saveDemo(session);
   return session;
 }
-export async function request<T>(path: string, body?: unknown, baseUrl = API_URL): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, {
+export class ApiError extends Error {
+  constructor(message: string, public status: number) { super(message); this.name='ApiError'; }
+}
+export async function request<T>(path: string, body?: unknown, baseUrl = API_URL, signal?: AbortSignal): Promise<T> {
+  let response: Response;
+  try { response = await fetch(`${baseUrl}${path}`, {
     method: body === undefined ? 'GET' : 'POST', credentials: 'include',
     headers: body === undefined ? {} : { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+    body: body === undefined ? undefined : JSON.stringify(body), signal: signal || (body === undefined ? AbortSignal.timeout(30000) : undefined),
+  }); } catch {
+    throw new ApiError(body === undefined ? 'We couldn’t load the latest details. Check your connection and try again; your saved progress is safe.' : 'The connection was interrupted. Check the saved status before repeating this action.',0);
+  }
   if (!response.ok) {
     let detail = 'Caspy lost the connection. Please try again.';
     try { const error = await response.json(); if (typeof error.detail === 'string') detail = error.detail; } catch { /* Preserve readable fallback. */ }
-    throw new Error(detail);
+    throw new ApiError(detail,response.status);
   }
-  return response.json();
+  try { return await response.json(); }
+  catch { throw new ApiError('We couldn’t read the latest update. Check the saved status before repeating this action.',502); }
 }
 
 export function parseEvent(block: string): { event: string; data: string } | null {
@@ -48,7 +55,19 @@ export async function streamTurn(sessionId: string, prompt: string, onToken: (to
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', 'Idempotency-Key': crypto.randomUUID() },
     body: JSON.stringify({ session_id: sessionId, prompt }),
   });
-  if (!response.ok || !response.body) throw new Error('The connection went a little ghostly. Reconnect to check your turn.');
+  if (!response.ok) {
+    let detail = response.status === 401 ? 'Your account or wallet session expired. Sign in and reconnect your wallet, then check your saved heist.'
+      : response.status === 429 ? 'The service is temporarily rate limited. Check your saved heist before trying again.'
+      : `The chat request could not finish (HTTP ${response.status}). Reconnect to check your saved turn.`;
+    try {
+      if (response.headers.get('content-type')?.includes('application/json')) {
+        const error = await response.json();
+        if (typeof error.detail === 'string' && error.detail.trim()) detail = error.detail;
+      }
+    } catch { /* Keep a readable status when the proxy response is not valid JSON. */ }
+    throw new Error(detail);
+  }
+  if (!response.body) throw new Error('The reply stream is unavailable. Reconnect to check your saved turn.');
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';

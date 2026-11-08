@@ -1,5 +1,6 @@
 """Local-chain wallet authentication and mint vouchers, isolated from LLM calls."""
 import copy
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -24,6 +25,36 @@ class LocalNFT:
         self.challenges = {}
         self.lock = threading.Lock()
         self.call('check')
+        self.database = None
+
+    def persist_sessions(self, database):
+        """Persist only token digests; signature challenges remain short-lived."""
+        self.database = database
+        self.session_scope = f"{self.config['chain_id']}:{self.config['contract'].lower()}:{self.config['deployment_block_hash']}"
+        with database.connect() as db:
+            db.executescript('''CREATE TABLE IF NOT EXISTS wallet_sessions(
+                token_hash TEXT PRIMARY KEY, address TEXT NOT NULL,
+                scope TEXT NOT NULL, expires BIGINT NOT NULL);
+                CREATE INDEX IF NOT EXISTS wallet_sessions_expiry ON wallet_sessions(expires);''')
+            if database.postgres:
+                db.execute('ALTER TABLE wallet_sessions ENABLE ROW LEVEL SECURITY')
+                db.execute('REVOKE ALL ON wallet_sessions FROM PUBLIC, anon, authenticated')
+
+    @staticmethod
+    def token_hash(token):
+        return hashlib.sha256(token.encode()).hexdigest()
+
+    def save_session(self, token, address):
+        expires = int(time.time()) + 21600
+        if self.database is not None:
+            with self.database.connect() as db:
+                db.execute('DELETE FROM wallet_sessions WHERE expires <= ?', (int(time.time()),))
+                db.execute('INSERT INTO wallet_sessions(token_hash,address,scope,expires) VALUES (?,?,?,?)',
+                           (self.token_hash(token), address, self.session_scope, expires))
+        else:
+            with self.lock:
+                self.auth = {k: v for k, v in self.auth.items() if v['expires'] > time.time()}
+                self.auth[token] = dict(address=address, expires=expires)
 
     def call(self, action, **values):
         try:
@@ -42,8 +73,8 @@ class LocalNFT:
 
     def nonce(self, token, body, origin):
         address = body.get('address', '')
-        if not isinstance(address, str) or not re.fullmatch(r'0x[0-9a-fA-F]{40}', address) or body.get('chain_id') != 31337:
-            raise ValueError('Connect a local chain 31337 wallet.')
+        if not isinstance(address, str) or not re.fullmatch(r'0x[0-9a-fA-F]{40}', address) or body.get('chain_id') != self.config['chain_id']:
+            raise ValueError('Connect a wallet on the configured candy chain.')
         with self.lock:
             now = time.time()
             self.challenges = {k: v for k, v in self.challenges.items() if v['expires'] > now}
@@ -65,12 +96,18 @@ class LocalNFT:
                            nonce=challenge['nonce'], domain=urlsplit(origin).netloc, origin=origin)
         # Rotate the cookie after authentication to prevent session fixation.
         authenticated = secrets.token_urlsafe(32)
-        with self.lock:
-            self.auth = {k: v for k, v in self.auth.items() if v['expires'] > time.time()}
-            self.auth[authenticated] = dict(address=result['address'], expires=time.time()+21600)
+        self.save_session(authenticated, result['address'])
+        self.logout(token)
         return authenticated, result
 
     def address(self, token):
+        if self.database is not None:
+            with self.database.connect() as db:
+                auth = db.execute('SELECT address FROM wallet_sessions WHERE token_hash=? AND scope=? AND expires>?',
+                                  (self.token_hash(token), self.session_scope, int(time.time()))).fetchone()
+            if not auth:
+                raise PermissionError('Connect your wallet and sign in to continue.')
+            return auth['address']
         with self.lock:
             auth = self.auth.get(token)
         if not auth or auth['expires'] < time.time():
@@ -81,6 +118,9 @@ class LocalNFT:
         return 'wallet:' + self.address(token).lower()
 
     def logout(self, token):
+        if self.database is not None:
+            with self.database.connect() as db:
+                db.execute('DELETE FROM wallet_sessions WHERE token_hash=?', (self.token_hash(token),))
         with self.lock:
             self.auth.pop(token, None)
             self.challenges.pop(token, None)
@@ -127,6 +167,7 @@ class LocalNFT:
                 raise ValueError('Invalid transaction hash.')
             result = self.call('status', session_id=ident, to=address, **commitments,
                                **({'tx_hash': tx_hash} if tx_hash else {}))
+            before={key:data.get(key) for key in ('minted','tx_hash','token_id','contract','chain_id')}
             for key in ('minted', 'tx_hash', 'token_id', 'contract', 'chain_id'):
                 if key in result:
                     data[key] = result[key]
@@ -135,5 +176,5 @@ class LocalNFT:
                 data.pop('tx_hash', None)
             if result.get('minted'):
                 self.candies.mark_minted(ident, result['token_id'])
-            games.persist()
+            if before!={key:data.get(key) for key in before}: games.persist()
             return result

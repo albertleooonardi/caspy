@@ -1,0 +1,69 @@
+import { useState } from 'react';
+import { createPublicClient, createWalletClient, custom, getAddress, formatEther, http, type Abi, type Hex } from 'viem';
+import { baseSepolia } from 'viem/chains';
+import { accountOnChain, walletErrorMessage } from '../lib/walletAccess';
+
+type Artifact = { abi: Abi; bytecode: Hex; hash: Hex };
+type DeploymentArtifacts = { version: number; chain_id: number; signer: Hex; candy: Artifact; market: Artifact };
+type Confirmed = { contract: Hex; block: string; hash: Hex };
+
+export default function TestnetDeployment() {
+  const [busy,setBusy]=useState(false), [error,setError]=useState(''), [status,setStatus]=useState('');
+  const [candy,setCandy]=useState<Confirmed|null>(null), [market,setMarket]=useState<Hex|null>(null);
+  const [config,setConfig]=useState('');
+  const [walletAddress,setWalletAddress]=useState(''), [balance,setBalance]=useState('');
+  async function reconnect() {
+    setBusy(true);setError('');setStatus('Approve account access for Caspy in MetaMask.');
+    try {
+      if (!window.ethereum) throw new Error('Open this page in a browser with MetaMask or another Ethereum wallet.');
+      const wallet=createWalletClient({chain:baseSepolia,transport:custom(window.ethereum)});
+      const account=await accountOnChain(wallet,baseSepolia,true);
+      setWalletAddress(account);
+      const publicClient=createPublicClient({chain:baseSepolia,transport:http()});
+      setBalance(formatEther(await publicClient.getBalance({address:account})));
+      setStatus('Wallet authorized on Base Sepolia. You can now retry the deployment.');
+    } catch(e) { setStatus('');setError(walletErrorMessage(e)); }
+    finally {setBusy(false);}
+  }
+  async function deploy(kind:'candy'|'market') {
+    setBusy(true);setError('');
+    try {
+      if (!window.ethereum) throw new Error('Open this page in a browser with MetaMask or another Ethereum wallet.');
+      const response=await fetch('/deployment/base-sepolia.json', { cache:'no-store' });
+      if(!response.ok) throw new Error('Deployment artifacts are not prepared.');
+      const artifacts=await response.json() as DeploymentArtifacts;
+      if(artifacts.chain_id!==84532 || artifacts.version!==3) throw new Error('Refresh this page to load the v3 Base Sepolia deployment artifacts.');
+      const wallet=createWalletClient({ chain:baseSepolia,transport:custom(window.ethereum) });
+      const account=await accountOnChain(wallet,baseSepolia);
+      setWalletAddress(account);
+      const publicClient=createPublicClient({ chain:baseSepolia,transport:http() });
+      const funds=await publicClient.getBalance({address:account});setBalance(formatEther(funds));
+      if(funds===0n) throw new Error('This wallet needs Base Sepolia test ETH to deploy. Do not use real ETH.');
+      if(kind==='market'&&!candy) throw new Error('Deploy the candy contract first.');
+      setStatus(`Approve the ${kind} contract deployment in your wallet. This uses Base Sepolia test ETH.`);
+      const artifact=artifacts[kind];
+      const hash=await wallet.deployContract({account,abi:artifact.abi,bytecode:artifact.bytecode,
+        args:kind==='candy'?['Caspy Candies','CASPY',getAddress(artifacts.signer),'',1000n]:[candy!.contract]});
+      setStatus('Waiting for Base Sepolia confirmation. Keep this page open.');
+      const receipt=await publicClient.waitForTransactionReceipt({hash});
+      if(receipt.status!=='success'||!receipt.contractAddress) throw new Error('Deployment reverted.');
+      if(kind==='candy') {
+        setCandy({contract:receipt.contractAddress,block:String(receipt.blockNumber),hash:receipt.blockHash});
+        setStatus('Candy contract confirmed. Next deploy its marketplace.');
+      } else {
+        setMarket(receipt.contractAddress);
+        const value={version:artifacts.version,chain_id:84532,rpc_url:'https://sepolia.base.org',contract:candy!.contract,
+          market:receipt.contractAddress,signer:artifacts.signer,deployment_block:candy!.block,
+          deployment_block_hash:candy!.hash,artifact_hash:artifacts.candy.hash,market_artifact_hash:artifacts.market.hash};
+        setConfig(JSON.stringify(value,null,2));
+        setStatus('Both contracts are confirmed. Download the public deployment configuration.');
+      }
+    } catch(e) { setStatus('');setError(walletErrorMessage(e)); }
+    finally {setBusy(false);}
+  }
+  function download() {
+    const url=URL.createObjectURL(new Blob([config],{type:'application/json'}));
+    const link=document.createElement('a');link.href=url;link.download='nft-sepolia.json';link.click();URL.revokeObjectURL(url);
+  }
+  return <main className="shell" style={{maxWidth:780,padding:'48px 24px'}}><a href="/">← Caspy home</a><p className="eyebrow" style={{marginTop:32}}>OPERATOR SETUP · BASE SEPOLIA ONLY</p><h1>Launch the candy contracts.</h1><p>This setup deploys a new 1,000-candy season and its marketplace. Version 3 permits multiple earned candies per wallet, with one mint per winning heist. Existing NFTs stay on their original contract. Your connected wallet becomes the contract administrator. The separate server signer can authorize eligible candy vouchers; it cannot spend your wallet’s funds.</p><p>Use a wallet funded with Base Sepolia test ETH. Two separate wallet approvals are required. Keep this page open between transactions. This does not publish or activate the game backend.</p><section aria-label="Deployment wallet" style={{marginTop:24,padding:20,border:'1px solid #dfd3eb',borderRadius:16}}><button className="button button-light" disabled={busy} onClick={()=>void reconnect()}>Reconnect wallet</button>{walletAddress && <p style={{overflowWrap:'anywhere'}}>Authorized account: <code>{walletAddress}</code><br />Base Sepolia balance: {balance || 'Checking…'} test ETH</p>}<p>Approve access for this site in MetaMask. Each deployment still needs its own transaction confirmation.</p></section><div style={{display:'flex',gap:16,flexWrap:'wrap',margin:'24px 0'}}><button className="button button-primary" disabled={busy||!!candy} onClick={()=>void deploy('candy')}>1. Deploy candy contract</button><button className="button button-light" disabled={busy||!candy||!!market} onClick={()=>void deploy('market')}>2. Deploy marketplace</button></div>{status&&<p role="status">{status}</p>}{error&&<p className="error" role="alert">{error}</p>}{candy&&<p>Candy contract: <a href={`https://sepolia.basescan.org/address/${candy.contract}`}>{candy.contract}</a></p>}{market&&<p>Marketplace: <a href={`https://sepolia.basescan.org/address/${market}`}>{market}</a></p>}{config&&<><button className="button button-primary" onClick={download}>Download deployment configuration</button><p>The JSON contains public addresses only. Save it to <code>data/nft-sepolia.json</code> in the project, then tell Codex it is ready.</p><pre style={{overflowX:'auto',fontSize:12,padding:16}}>{config}</pre></>}</main>;
+}

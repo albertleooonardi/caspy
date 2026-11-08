@@ -12,7 +12,7 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 contract CaspyHeist is ERC721, AccessControl, Pausable, ReentrancyGuard, EIP712 {
     bytes32 public constant SIGNER_ROLE = keccak256("SIGNER_ROLE");
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
-    uint256 public constant VERSION = 2;
+    uint256 public constant VERSION = 3;
     bytes32 public constant CANDY_TYPEHASH = keccak256("CandyVoucher(address to,uint8 grade,uint16 score,bytes32 sessionId,bytes32 promptHash,bytes32 imageHash,bytes32 metadataHash,bytes32 uriHash,uint256 nonce,uint256 deadline)");
     struct CandyVoucher {
         address to; uint8 grade; uint16 score; bytes32 sessionId;
@@ -36,12 +36,12 @@ contract CaspyHeist is ERC721, AccessControl, Pausable, ReentrancyGuard, EIP712 
     event CandyMinted(address indexed to,uint256 indexed tokenId,bytes32 indexed sessionId,uint8 grade,uint16 score,bytes32 promptHash,bytes32 imageHash,bytes32 metadataHash);
     event PromptLicensed(uint256 indexed tokenId,string terms);
     error InvalidVoucher(); error InvalidSignature(); error ExpiredVoucher();
-    error SessionAlreadyMinted(); error WalletAlreadyMinted(); error SupplyExhausted();
+    error SessionAlreadyMinted(); error SupplyExhausted();
     error UnauthorizedRecipient(); error LicenseAlreadySet();
 
     // Kept constructor-compatible with the deployment scaffold; URI is committed per token.
     constructor(string memory name_,string memory symbol_,address signer_,string memory,uint256 supply_)
-        ERC721(name_,symbol_) EIP712(name_,"2") {
+        ERC721(name_,symbol_) EIP712(name_,"3") {
         require(signer_!=address(0) && supply_>0,"Invalid configuration");
         signer=signer_; maxSupply=supply_;
         _grantRole(DEFAULT_ADMIN_ROLE,msg.sender); _grantRole(PAUSER_ROLE,msg.sender); _grantRole(SIGNER_ROLE,signer_);
@@ -54,7 +54,6 @@ contract CaspyHeist is ERC721, AccessControl, Pausable, ReentrancyGuard, EIP712 
         if(v.to!=msg.sender) revert UnauthorizedRecipient();
         if(v.deadline<block.timestamp) revert ExpiredVoucher();
         if(usedSessions[v.sessionId]) revert SessionAlreadyMinted();
-        if(mintedWallet[v.to]) revert WalletAlreadyMinted();
         if(totalMinted>=maxSupply) revert SupplyExhausted();
         if(v.grade!=gradeForScore(v.score) || v.promptHash==0 || v.imageHash==0 || v.metadataHash==0 || bytes(uri).length==0 || keccak256(bytes(uri))!=v.uriHash) revert InvalidVoucher();
         bytes32 payload=keccak256(abi.encode(CANDY_TYPEHASH,v.to,v.grade,v.score,v.sessionId,v.promptHash,v.imageHash,v.metadataHash,v.uriHash,v.nonce,v.deadline));

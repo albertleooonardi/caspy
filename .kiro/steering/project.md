@@ -1,10 +1,37 @@
 # Caspy's Prompt Heist — Project Steering
 
-Checkpoint: **4 November 2026**. This file is the continuation guide for Kiro.
+Checkpoint: **6 November 2026**. This file is the continuation guide for Kiro.
 Read the implementation before changing behavior; distinguish completed work,
 observed QA, and future production requirements. Full requirements:
 #[[file:PRD.md]], especially sections 20–22. Older architecture proposals in the
 PRD/README are not proof that a service is implemented or deployed.
+
+Cloud deployment preparation is now in progress: read
+#[[file:docs/cloud-deployment.md]] before hosting work. The user requires full NFT
+gameplay, approved Base Sepolia preparation and selected Render free in My
+Workspace after Railway rejected project creation (expired trial). Vercel project
+`caspy-prompt-heist` is created. `/deploy-testnet` prepares two operator-approved
+contract transactions; it does not activate the backend. CI/release workflows,
+HTTPS origin/cookies, a same-origin API proxy, optional private PostgreSQL game
+snapshots/blobs, and the official free Schnell Space adapter are prepared. One
+anonymous real Space image succeeded, but quotas/queues remain. Do not claim full
+cloud gameplay is live until contracts, hosting secrets and end-to-end verification
+are complete. Preserve the new ignored voucher signer in `data/credentials/`;
+never print it or use Anvil keys on a public chain. Existing local storage remains
+the default for ./run.sh. Later sections describe that local checkpoint.
+
+**7 November cloud update:** initial approved source `3911622` is pushed on
+`codex/cloud-preview-20261106`; draft PR #1; all four GitHub CI jobs passed.
+Vercel frontend build READY at `https://caspy-prompt-heist.vercel.app`, operator
+setup `/deploy-testnet`; full game not activated. Railway trial expired and
+Render requires card details even for free creation; user cannot add a card and
+selected a quota-limited GitHub Codespaces demo backend instead. Corrected CLI
+login is repository owner `albertleooonardi` (old `leokimiaa` login preserved).
+Private server environment is staged in ignored credentials files, not source.
+Only API port 8000 may be forwarded after readiness; never expose Bifrost/Anvil.
+Contracts, backend configuration and deployed full-flow QA remain pending.
+Production CI environment has owner approval/main-only protection; release flag
+is false until verified. See cloud-deployment.md for authoritative live progress.
 
 ## Product and reward rules
 
@@ -20,7 +47,22 @@ to convince the ghost to share candy. A confirmed win can end the heist early.
 - Quality (creativity, coherence, specificity) plus collection-relative text
   novelty determines C/B/A/S: 0–59 / 60–74 / 75–89 / 90–100. Grades are persisted
   before artwork and do not change on retry. No gacha, random rarity or rerolls.
-- Maximum collection supply is 1,000. One candy per wallet/heist is enforced.
+- Maximum collection supply is 1,000. At most one candy entitlement per wallet
+  per deployment/season and one mint per wallet are enforced independently of
+  how many heists a contributor plays.
+- Contributor accounts have unlimited heist replay after any terminal result,
+  preserving three prompts per heist. `Games.create(unlimited=...)` receives its
+  permission from the server-authenticated role, never a request-body flag.
+  Active/in-flight/pending-review sessions cannot be abandoned. Old heists can
+  be reopened via Account's View heist links; result/claim routes accept a session
+  query parameter but still enforce existing account and wallet ownership checks.
+  NFT entitlement and one-mint-per-wallet restrictions remain unchanged.
+- For other roles, NFT gameplay daily retry: lost/void heists can be followed by a new three-prompt
+  heist after the next 00:00 WIB (Jakarta), based on the old heist's creation day.
+  Server authority lives in `Games.create`; persistent history survives restart.
+  Active/pending-review/winning games are preserved, so rewards remain claimable.
+  Contract `mintedWallet` still permits only one mint per deployment. Client shows
+  the next unlock and a daily-heist action; this does not delete previous data.
 - Source prompts guide candy flavor, color and wrapper motifs. The art direction
   is a wrapped bonbon with two twisted wrapper ends, expressive eyes, purple
   outlines, pastel shading and Halloween accents; not another ghost silhouette.
@@ -82,7 +124,8 @@ All three runtime databases moved to private Supabase schemas:
 | `caspy_bifrost_logs` | Gateway logs |
 | `caspy_archive` | Lossless private recovery snapshots, not live app tables |
 
-Verified checkpoint: **98 live tables / 19,980 rows**. Five legacy databases,
+Verified migration-time snapshot: **98 live tables / 19,980 rows** (historical
+counts, not current row totals). Five legacy databases,
 including two old pre-QA copies, were archived with **39,776 rows**. Those five
 SQLite databases and their WAL/SHM sidecars were removed; a final scan found zero
 SQLite databases under `data/`. Existing password hashes and records were kept.
@@ -119,7 +162,10 @@ migration or delete `data/`.
 Email/password accounts use salted PBKDF2, opaque server sessions and
 HttpOnly/SameSite cookies (eight-hour account sessions; separate wallet sessions).
 Wallet verification/linking is distinct from account login. Password recovery
-and email verification are not implemented.
+and email verification are not implemented. Researcher accounts/workspaces are
+self-service and are not verified organizations. Email confirmation, researcher
+applications, admin approval, MFA and verified badges are proposed only; do not
+claim they exist or make a verified badge a cosmetic substitute for authorization.
 
 Private play is the default. A named research campaign, research contribution
 and commercial research licensing require separate explicit choices. Consent
@@ -189,27 +235,33 @@ content hashes passed after cleanup. Walkthrough media checks and frontend tests
 build passed in the earlier video task. These are dated results, not perpetual
 certification; do not claim tests were rerun when they were not.
 
-Next priorities, in order:
+Current focused checks on 6 November: **14 game API tests + 15 platform tests +
+11 frontend tests = 40 passed**, type check passed and production build generated
+17 routes. These include contributor replay, protected unfinished games, Jakarta
+reset boundaries, role-derived replay permission, persistence and access checks.
+David and Elroy passed live local API login/session/logout; Leonardi's existing
+password was preserved. The latest Python replay changes still require a
+user-managed launcher restart; do not equate passing tests with process activation.
 
-1. Full-stack startup after Supabase migration passed live QA on 4 November:
-   frontend 4321, API 8000 and Bifrost 8080 health returned HTTP 200.
-2. `/candy/config` reports local FLUX.1-schnell, `generation_local: true`,
-   `configured: true`. Runtime activation is verified; a fresh end-to-end
-   render/mint was subsequently verified in Chrome on 5 November (S/92, token #1).
-3. Real eligible heist → local art retry → mint → collection → listing →
-   user-executed purchase → private prompt ownership checks passed in Chrome on
-   5 November. Real sale history displayed 0.01 test ETH. Seller payout remains
-   unverified (0.01 test ETH still credited after user reports); see the dated QA report for remaining coverage.
-4. Fix/calibrate judge category/flag consistency. One benign declined story was
-   labeled `exploit_attempt` while `exploit_flag` was false. Preserve reward gates;
-   do not loosen them to make a test win.
-5. Investigate local inference reliability/performance: observed renders took
-   about 249–305 seconds, ~7.9 GB memory on an 8 GiB M3, with one transient failure.
-   No concurrency/load guarantee or local image safety classifier exists.
-6. Production hardening includes restricted app DB credentials, managed signing,
-   durable assets, account recovery, representative evals, mobile/accessibility/
-   load/security checks and independent contract review. WCAG 2.2 AA is a target,
-   not a completed certification. n8n remains optional future work.
+Next priorities:
+
+1. After the user restarts `./run.sh`, verify contributor Play another heist after
+   loss/win, historical chats and old reward access in Chrome. Confirm other-role
+   daily locking and pending-review protection without changing the system clock.
+2. Finish desktop/mobile visual QA of the new dashboard, compact login/register,
+   deck collection and marketplace board. Native browser captures have intermittently
+   returned blank/no-window results; record that limitation rather than claiming
+   all screens have been verified. Recent JSX/CSS changes do not update video assets.
+3. Resolve seller payout: verify the actual withdrawal receipt and zero credited
+   proceeds. The previous 0.01 test-ETH credit persisted after user reports.
+4. Calibrate judge category/flag consistency. A benign declined story was labeled
+   `exploit_attempt` with `exploit_flag: false`; preserve reward gates.
+5. Investigate local render reliability/performance: ~249–305 seconds, ~7.9 GB on
+   an 8 GiB M3, one transient failure; no load guarantee or image safety classifier.
+6. Production hardening: verified identities/account recovery, least-privilege DB
+   role, managed signing, durable assets/backups, representative evals, security/
+   accessibility/mobile/load checks and independent contract review. The launcher
+   is local development tooling, not a production deployment. n8n is future work.
 
 ## Secrets and working conventions
 
@@ -224,12 +276,12 @@ rubrics/provenance, explicit generation/retry consent and immutable commitments.
 Preserve existing uncommitted work; do not reset the repository or silently
 rewrite product behavior while addressing a narrow task.
 
-## Marketplace price history — 4 November QA implementation
+## Historical price-history implementation — superseded presentation
 
-`PriceHistory.tsx` reads public `/market/history`, backed by the local chain
+The retained `PriceHistory.tsx` can read public `/market/history`, backed by the local chain
 bridge's confirmed `CandySold` events for the current deployment. Minting,
-asking prices and cancellations do not establish a sale price. The collection
-view uses individual dots (different assets); selecting a candy connects its
+asking prices and cancellations do not establish a sale price. Its historical all-candies
+view used individual dots (different assets); selecting a candy connects its
 actual resales. Includes 7/30-day/all-time filters, exact wei/transaction details,
 trade count, volume, accessible table and a truthful empty state. Prices use
 BigInt arithmetic. Latest 1,000 sales are displayed with a truncation notice.
@@ -251,7 +303,7 @@ Walkthrough playback, pause, chapter seek and win-only quiz passed in Chrome.
 Real Schnell attempt one failed; explicit same-seed retry succeeded. Token #1
 minted, listed with user-approved prompt license, and was purchased by the separate
 player account. User executed purchase after automatic review required handoff.
-The live graph shows the actual 0.01 test-ETH sale; filtered multi-sale graph
+At that QA checkpoint, the graph showed the actual 0.01 test-ETH sale; filtered multi-sale graph
 controls also passed with an isolated fictional fixture. Buyer prompt access
 unlocked; seller access was denied after transfer. Seller is credited 0.01 test
 ETH; final payout remains unverified: readback still shows the full credit
@@ -266,3 +318,47 @@ extension signing passed. Intermittent blank Chrome route rendering and local
 render reliability remain open findings. The temporary graph fixture server on
 18889 was stopped; user app servers remain user-managed. Never insert fictional
 fixture sales into live history.
+
+## UI/UX refresh — 6 November
+
+Signed-in accounts now have `/dashboard` (`UserDashboard.tsx`), also shown at `/`
+after account loading. Guests keep the public homepage. Login/registration default
+to the dashboard; explicit allowed `next` routes are preserved. Dashboard uses
+existing authenticated activity and collection endpoints, never creates a heist
+on load, and keeps account settings at `/account`. Current-heist restoration uses
+the saved session ID and the existing owner checks. It shows activity summaries; full historical chats are opened from
+Account → View heist. Session query parameters do not bypass backend ownership. Collection and current heist require the wallet in NFT mode. New
+devices without a saved session ID must open Play to restore their heist.
+
+Account-entry layout keeps the original enlarged Caspy PNG, not an animated
+replacement/GIF. Login uses compact spacing and omits announcement/footer to fit
+a typical desktop viewport. Registration pairs name/email and password fields;
+the left illustration stays visible while scrolling on desktop. Small viewports
+keep normal scrolling and stack controls rather than clipping required inputs.
+
+Three requested development contributors: `leonardi@caspy.local` (existing;
+password preserved), `david@caspy.local` and `elroy@caspy.local` (created). Temporary
+credentials for new accounts are in ignored `data/credentials/` files with 0600
+permissions and 0700 directory permissions. Do not print or commit them, reset
+existing passwords unasked, imply terms acceptance, or enable research consent
+for these accounts. Account role is not email or organization verification.
+Contributors who create a research workspace become researchers and follow that
+role's replay rules; choosing research consent does not change their role.
+
+Marketplace presentation now uses horizontal achievement-style listing rows:
+candy thumbnail/name, grade/score, seller wallet, asking price and buy/cancel
+action. Prompt license stays expandable. The user requested removing the graph
+from marketplace; its component is no longer rendered there. History API and
+source component remain available for future use. Collection retains compact
+deck cards. Do not restore the marketplace graph without a new product request.
+
+See `docs/ui-ux-refresh-2026-11-06.md` for the shared design system, implemented
+interaction improvements, browser coverage and limits. `experience.css` loads
+after legacy styles; keep overrides organized there. Fonts are served locally
+with their OFL licenses. Shared reward progress lives in `RewardJourney.tsx`.
+
+Chrome checks covered mobile sign-in, wallet loading/connection, optional research
+disclosure and collection search/reset, plus desktop collection presentation.
+Frontend tests (11), type check and production build passed. These presentation
+changes do not resolve or re-verify the earlier payout discrepancy or MetaMask
+extension integration. Development servers remain user-managed.

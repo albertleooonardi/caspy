@@ -22,7 +22,7 @@ contract CaspyHeistTest is Test {
         v=CaspyHeist.CandyVoucher(to,score>=90?4:score>=75?3:score>=60?2:1,score,session,sha256("fixture prompt"),sha256("fixture image"),sha256("fixture metadata"),keccak256(bytes(URI)),1,block.timestamp+1 days);
     }
     function sig(CaspyHeist.CandyVoucher memory v) internal view returns(bytes memory) {
-        bytes32 domain=keccak256(abi.encode(keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),keccak256("Caspy Candies"),keccak256("2"),block.chainid,address(candy)));
+        bytes32 domain=keccak256(abi.encode(keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),keccak256("Caspy Candies"),keccak256("3"),block.chainid,address(candy)));
         bytes32 typeHash=keccak256("CandyVoucher(address to,uint8 grade,uint16 score,bytes32 sessionId,bytes32 promptHash,bytes32 imageHash,bytes32 metadataHash,bytes32 uriHash,uint256 nonce,uint256 deadline)");
         bytes32 payload=keccak256(abi.encode(typeHash,v.to,v.grade,v.score,v.sessionId,v.promptHash,v.imageHash,v.metadataHash,v.uriHash,v.nonce,v.deadline));
         (uint8 vv,bytes32 rr,bytes32 ss)=vm.sign(KEY,keccak256(abi.encodePacked("\x19\x01",domain,payload)));
@@ -43,7 +43,7 @@ contract CaspyHeistTest is Test {
         mint(player,bytes32(uint256(1)),92);
         assertEq(candy.ownerOf(1),player);assertEq(candy.tokenGrade(1),4);assertEq(candy.tokenScore(1),92);
         assertEq(candy.tokenURI(1),URI);assertEq(candy.tokenImageHash(1),sha256("fixture image"));assertEq(candy.tokenMetadataHash(1),sha256("fixture metadata"));
-        assertEq(candy.maxSupply(),2);assertEq(candy.totalMinted(),1);assertEq(candy.VERSION(),2);
+        assertEq(candy.maxSupply(),2);assertEq(candy.totalMinted(),1);assertEq(candy.VERSION(),3);
     }
     function test_AllGradeThresholds() public view {
         assertEq(candy.gradeForScore(59),1);assertEq(candy.gradeForScore(60),2);assertEq(candy.gradeForScore(74),2);
@@ -61,10 +61,12 @@ contract CaspyHeistTest is Test {
         CaspyHeist.CandyVoucher memory v=voucher(player,bytes32(uint256(1)),92);bytes memory signature=sig(v);
         vm.prank(player);vm.expectRevert(CaspyHeist.InvalidVoucher.selector);candy.mintCandy(v,"https://evil.example/other",signature);
     }
-    function test_RejectsReplayAndOneMintPerWallet() public {
+    function test_RejectsReplayButAllowsMultipleHeistsPerWallet() public {
         mint(player,bytes32(uint256(1)),92);
         mintExpected(player,bytes32(uint256(1)),92,CaspyHeist.SessionAlreadyMinted.selector);
-        mintExpected(player,bytes32(uint256(2)),92,CaspyHeist.WalletAlreadyMinted.selector);
+        mint(player,bytes32(uint256(2)),70);
+        assertEq(candy.balanceOf(player),2);
+        assertEq(candy.tokenScore(2),70);
     }
     function test_EnforcesHardSupplyCap() public {
         mint(player,bytes32(uint256(1)),92);mint(buyer,bytes32(uint256(2)),80);

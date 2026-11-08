@@ -55,6 +55,7 @@ class NFTIntegration(unittest.TestCase):
         cls.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
         cls.server.nft = LocalNFT(cls.config)
         cls.server.platform = Platform(Path(cls.temp.name) / 'platform.sqlite3')
+        cls.server.nft.persist_sessions(cls.server.platform.database)
         cls.server.candy = CandyStore(cls.server.platform, cls.server.nft, Path(cls.temp.name)/'assets', FixtureRenderer())
         cls.server.nft.candies = cls.server.candy
         cls.store = Path(cls.temp.name) / 'games.json'
@@ -146,19 +147,32 @@ class NFTIntegration(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.driver('mint', voucher=tampered)
         transaction = self.driver('mint', voucher=voucher)
+        # Recover after a browser loses the transaction-submit callback.
+        recovered=self.api('/mint/status/'+game['id'])
+        self.assertTrue(recovered['minted'])
+        commitments=self.server.candy.commitments(game['id'])
+        with self.assertRaises(ValueError):
+            self.server.nft.call('status',session_id=game['id'],to=address,**{**commitments,'score':0})
         status = self.api('/mint/submit', {'session_id': game['id'], 'tx_hash': transaction['hash']})
         self.assertTrue(status['minted'])
         self.assertEqual(status['status'], 'confirmed')
+        avatar=self.api('/account/avatar',{'token_id':status['token_id']})['user']
+        self.assertTrue(avatar['avatar_url'].endswith('.png'))
+        self.assertEqual(self.api('/account/me')['user']['avatar_token'],status['token_id'])
         self.assertTrue(self.api('/mint/status/' + game['id'])['minted'])
         self.api('/game/voucher', {'session_id': game['id']}, expected=400)
         with self.assertRaises(ValueError):
             self.driver('mint', voucher=voucher)
-        # Durable game and claim survive a new Games instance and remain one per wallet.
+        # A contributor may replay, while the old claim stays durable and one per wallet.
         self.server.games = Games(FakeGateway(), self.store)
-        restored = self.api('/game/session', {})
+        restored = self.api('/game/session/' + game['id'])
         self.assertEqual(restored['id'], game['id'])
         self.assertTrue(restored['minted'])
         self.assertEqual(restored['token_id'], status['token_id'])
+        replay = self.api('/game/session', {})
+        self.assertNotEqual(replay['id'], game['id'])
+        self.assertEqual(replay['attempts_remaining'], 3)
+        self.assertTrue(self.api('/game/session/' + game['id'])['minted'])
         available = self.api('/auth/local-wallets')['wallets']
         self.assertTrue(any(item['address'].lower() == address.lower() and item['linked'] for item in available))
         collection=self.api('/candy/collection')['tokens']
@@ -173,6 +187,7 @@ class NFTIntegration(unittest.TestCase):
         seller_cookie,seller_cookies=self.cookie,dict(self.cookies)
         seller=self.account
         buyer=self.sign_in(8)
+        self.api('/account/avatar',{'token_id':status['token_id']},expected=403)
         self.api('/candy/prompt/'+status['token_id'],expected=403)
         purchase=self.driver('write',contract=self.config['market'],market=True,function_name='buy',args=[listed['listing_id']],value='1000')
         history=self.api('/market/history')
@@ -189,6 +204,7 @@ class NFTIntegration(unittest.TestCase):
         self.assertGreater(sale['timestamp'],0)
         self.assertEqual(self.api('/candy/prompt/'+status['token_id'])['prompt'],'A clever ghost bakery trade.')
         self.assertEqual(self.api('/candy/collection')['tokens'][0]['owner'].lower(),buyer.lower())
+        self.assertEqual(self.api('/account/avatar',{'token_id':status['token_id']})['user']['avatar_token'],status['token_id'])
         # A resale asking price and its cancellation never become recorded sales.
         self.driver('write',contract=self.config['contract'],function_name='approve',args=[self.config['market'],status['token_id']])
         self.driver('write',contract=self.config['market'],market=True,function_name='list',args=[status['token_id'],'2000'])
@@ -213,6 +229,26 @@ class NFTIntegration(unittest.TestCase):
     def test_treat_and_persistent_claim(self):
         self.finish_and_mint(2, True)
 
+    def test_multiple_winning_heists_mint_to_same_wallet(self):
+        self.sign_in(5)
+        self.server.games.gateway=FakeGateway(verdict='YIELD')
+        tokens=[]
+        for number in range(2):
+            game=self.api('/game/session', {})
+            self.api('/game/turn', {'session_id':game['id'],'prompt':f'A ghost bakery trade number {number}.'})
+            self.api('/candy/generate', {'session_id':game['id'],'accept_provider':True})
+            for _ in range(100):
+                if self.server.candy.row(game['id'])['state']!='generating': break
+                time.sleep(.05)
+            voucher=self.api('/game/voucher', {'session_id':game['id']})
+            tx=self.driver('mint',voucher=voucher)
+            status=self.api('/mint/submit',{'session_id':game['id'],'tx_hash':tx['hash']})
+            self.assertTrue(status['minted'])
+            tokens.append(status['token_id'])
+            with self.assertRaises(ValueError): self.driver('mint',voucher=voucher)
+        self.assertNotEqual(*tokens)
+        self.assertEqual(len(self.api('/candy/collection')['tokens']),2)
+
     def test_trick_and_persistent_claim(self):
         self.finish_and_mint(3, False)
 
@@ -226,7 +262,7 @@ class NFTIntegration(unittest.TestCase):
         signer_account = Account.from_mnemonic('test test test test test test test test test test test junk', account_path="m/44'/60'/0'/0/1")
         self.account = 5
         address = self.driver('address')['address']
-        signer = VoucherSigner(signer_account.key.hex(), self.config['contract'], 31337)
+        signer = VoucherSigner(signer_account.key.hex(), self.config['contract'], 31337, domain_version='3')
         uri='http://localhost/explicit-test-fixture.json'
         signed = signer.create_voucher(address, 92, '0x'+secrets.token_hex(32), *(['0x'+'12'*32]*3), uri, 1, int(time.time())+3600)
         voucher = {**signed['voucher'], 'uri': signed['uri'], 'nonce': '1', 'deadline': str(signed['voucher']['deadline']), 'signature': signed['signature'], 'chainId': 31337, 'contract': self.config['contract']}

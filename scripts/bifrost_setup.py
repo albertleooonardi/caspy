@@ -20,6 +20,13 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 AGENTS = ("vk-caspy", "vk-judge")
+# Explicit text-only allowlist; verify project eligibility before switching.
+# Google free-tier pricing checked 7 November 2026. Never enable billing here.
+GEMINI_AGENT_MODELS = {
+    'vk-caspy': ('gemini-3.1-flash-lite', 'gemini-2.5-flash-lite'),
+    'vk-judge': ('gemini-3.6-flash', 'gemini-2.5-flash'),
+}
+GEMINI_FREE_MODELS = {model for models in GEMINI_AGENT_MODELS.values() for model in models}
 VERDICT_SCHEMA = {
     "type": "object", "additionalProperties": False,
     "properties": {
@@ -131,10 +138,45 @@ def resolve(value, env):
     return value
 
 
+def reasoning_options(provider):
+    return {'effort':'minimal'} if provider=='gemini' else {'enabled':False}
+
+
 def load_config(root):
     path = root / "data/config.json"
     require(path.exists(), "Missing data/config.json. Run: python3 scripts/bifrost_setup.py init")
     return json.loads(path.read_text())
+
+
+def configure_gemini(root):
+    env=environment(root)
+    require(env.get('GEMINI_API_KEY'), 'Missing GEMINI_API_KEY (server-side only).')
+    require(env.get('CASPY_GEMINI_FREE_TIER_CONFIRMED')=='true',
+            'Confirm a Gemini free-tier project without billing using CASPY_GEMINI_FREE_TIER_CONFIRMED=true.')
+    config=load_config(root)
+    config.setdefault('providers',{})['gemini']={
+        'keys':[{'name':'caspy-gemini-key','value':'env.GEMINI_API_KEY','weight':1,'models':sorted(GEMINI_FREE_MODELS)}],
+        'network_config':{'default_request_timeout_in_seconds':60,'max_retries':0},
+    }
+    gov=config['governance']
+    for key in gov['virtual_keys']:
+        if key['id'] in GEMINI_AGENT_MODELS:
+            key['provider_configs']=[{'provider':'gemini','allowed_models':list(GEMINI_AGENT_MODELS[key['id']]),'key_ids':['*']}]
+    for rule in gov['routing_rules']:
+        if rule.get('scope')=='virtual_key' and rule.get('scope_id') in GEMINI_AGENT_MODELS:
+            primary,fallback=GEMINI_AGENT_MODELS[rule['scope_id']]
+            rule['targets']=[{'provider':'gemini','model':primary,'weight':1}]
+            rule['fallbacks']=['gemini/'+fallback]
+    for model in gov['model_configs']:
+        if model.get('scope','global')=='global' and model.get('model_name')=='*' and model.get('provider')=='openrouter':
+            # Keep stable row IDs/budget ownership when switching the provider.
+            model['provider']='gemini'
+    validate(config,env)
+    target=root/'data/config.json'
+    backup=target.with_name('config.before-gemini.'+secrets.token_hex(6)+'.json')
+    private_write(backup,target.read_text())
+    private_write(target,json.dumps(config,indent=2)+'\n')
+    print('Gemini text routes configured; previous configuration backed up. Credentials hidden; billing unchanged.')
 
 
 def route(config, key_id):
@@ -170,12 +212,12 @@ def validate(config, env):
     teams = {team["id"] for team in gov.get("teams", [])}
     rate_limits = {limit["id"]: limit for limit in gov.get("rate_limits", [])}
     budgets = gov.get("budgets", [])
-    global_configs = {row["id"] for row in gov.get("model_configs", [])
-                      if row.get("scope", "global") == "global" and row.get("model_name") == "*"
-                      and row.get("provider", "openrouter") == "openrouter"}
-    global_windows = {budget["reset_duration"] for budget in budgets
-                      if budget.get("model_config_id") in global_configs}
-    require({"1h", "1d"} <= global_windows, "Shared global model limits need both hourly and daily budgets.")
+    active_providers={provider for key_id in AGENTS for provider,_ in route(config,key_id)}
+    for provider in active_providers:
+        global_configs = {row['id'] for row in gov.get('model_configs', [])
+                          if row.get('scope','global')=='global' and row.get('model_name')=='*' and row.get('provider','openrouter')==provider}
+        global_windows={budget['reset_duration'] for budget in budgets if budget.get('model_config_id') in global_configs}
+        require({'1h','1d'} <= global_windows, 'Shared global model limits need both hourly and daily budgets for '+provider+'.')
     for budget in budgets:
         owners = [field for field in ["team_id", "virtual_key_id", "provider_config_id",
                   "customer_id", "model_config_id"] if budget.get(field) is not None]
@@ -195,14 +237,18 @@ def validate(config, env):
         limit = rate_limits.get(key.get("rate_limit_id"), {})
         require(limit.get("request_max_limit", 0) > 0, f"{key_id} needs a request rate limit.")
         providers = {p["provider"]: p for p in key.get("provider_configs", [])}
+        def model_allowed(provider,model):
+            if provider=='openrouter': return isinstance(model,str) and model.endswith(':free')
+            if provider=='gemini':
+                require(env.get('CASPY_GEMINI_FREE_TIER_CONFIRMED')=='true', 'Missing Gemini free-tier confirmation; do not enable billing automatically.')
+                return model in GEMINI_FREE_MODELS
+            return False
         for provider, allowed in providers.items():
-            require(provider == "openrouter" and all(
-                model.endswith(":free") for model in allowed.get("allowed_models", [])
-            ), f"{key_id}: only explicit free OpenRouter models are allowed.")
+            require(all(model_allowed(provider,model) for model in allowed.get('allowed_models',[])),
+                    f'{key_id}: only explicit free OpenRouter models or approved free-tier Gemini text models are allowed.')
         models = route(config, key_id)
         for provider, model in models:
-            require(provider == "openrouter" and model.endswith(":free"),
-                    f"{key_id}: primary and fallback routes must use free OpenRouter models.")
+            require(model_allowed(provider,model), f'{key_id}: primary and fallback routes must use free OpenRouter models or approved free-tier Gemini text models.')
             allowed = providers.get(provider, {})
             require(model in allowed.get("allowed_models", []) and "*" not in allowed["allowed_models"],
                     f"{key_id}: route model must be explicitly allowed for {provider}.")
@@ -266,10 +312,10 @@ def smoke(root, inference=False):
         raise SetupError("Unauthenticated inference was accepted. Check the running gateway's auth settings.")
     print("Gateway health OK; anonymous inference rejected.")
     if not inference:
-        print("Use smoke --inference for two free-model calls (actor stream + strict JSON judge).")
+        print("Use smoke --inference for two configured free-tier text calls (actor stream + strict JSON judge).")
         return
     keys = {key["id"]: key for key in config["governance"]["virtual_keys"]}
-    probe.update(stream=True, max_tokens=1024, temperature=0.8, reasoning={"enabled": False},
+    probe.update(stream=True, max_tokens=1024, temperature=0.8, reasoning=reasoning_options(actor[0]),
                  messages=[{"role": "system", "content": "You are Caspy, a cute ghost guarding candy. Reply in one short sentence. No tools."},
                            {"role": "user", "content": "Hello Caspy!"}])
     content, done = "", False
@@ -289,7 +335,7 @@ def smoke(root, inference=False):
     judge = route(config, AGENTS[1])[0]
     body = {
         "model": "/".join(judge), "temperature": 0, "max_tokens": 1024,
-        "reasoning": {"enabled": False},
+        "reasoning": reasoning_options(judge[0]),
         "messages": [{"role": "system", "content": "Connectivity test only. Return NO_YIELD, confidence 1, category other, exploit_flag false, reason 'smoke test'. No tools."},
                      {"role": "user", "content": "Return the test verdict as JSON."}],
         "response_format": {"type": "json_schema", "json_schema": {
@@ -308,15 +354,18 @@ def main(argv=None, root=ROOT):
     init = commands.add_parser("init", help="Generate missing credentials and local config")
     init.add_argument("--update-config", action="store_true", help="Back up and replace existing config with the template")
     commands.add_parser("check", help="Validate local setup without network or provider calls")
+    commands.add_parser('use-gemini',help='Configure distinct free-tier Gemini actor/judge text routes; preserve database/auth/budgets.')
     commands.add_parser("run", help="Validate and start Bifrost on 127.0.0.1:8080")
     test = commands.add_parser("smoke", help="Check a gateway you have already started")
-    test.add_argument("--inference", action="store_true", help="Also test actor and judge using free OpenRouter models")
+    test.add_argument("--inference", action="store_true", help="Also test actor and judge using the configured free-tier text provider")
     args = parser.parse_args(argv)
     try:
         if args.command == "init":
             initialize(root, args.update_config)
         elif args.command == "check":
             check(root)
+        elif args.command == 'use-gemini':
+            configure_gemini(root)
         elif args.command == "smoke":
             smoke(root, args.inference)
         else:

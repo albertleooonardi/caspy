@@ -49,6 +49,34 @@ class GatewaySetupTests(unittest.TestCase):
         self.assertEqual((self.root / ".env").stat().st_mode & 0o777, 0o600)
         gateway.validate(self.config, self.env)
 
+    def test_gemini_switch_preserves_auth_databases_budgets_and_distinct_models(self):
+        before=copy.deepcopy(self.config)
+        with patch.dict(os.environ,{'GEMINI_API_KEY':'gemini-test-credential','CASPY_GEMINI_FREE_TIER_CONFIRMED':'true'}):
+            gateway.configure_gemini(self.root)
+            config=gateway.load_config(self.root)
+            env=gateway.environment(self.root)
+            gateway.validate(config,env)
+        for store in ('config_store','logs_store'): self.assertEqual(config[store],before[store])
+        self.assertEqual(config['governance']['auth_config'],before['governance']['auth_config'])
+        self.assertEqual(config['governance']['budgets'],before['governance']['budgets'])
+        for agent in gateway.AGENTS:
+            self.assertEqual(gateway.route(config,agent),[('gemini',model) for model in gateway.GEMINI_AGENT_MODELS[agent]])
+        self.assertEqual(config['providers']['gemini']['keys'][0]['value'],'env.GEMINI_API_KEY')
+        self.assertTrue(list((self.root/'data').glob('config.before-gemini.*.json')))
+        self.assertNotIn('gemini-test-credential',json.dumps(config)+self.output.getvalue())
+
+    def test_gemini_requires_free_project_confirmation_and_rejects_unapproved_models(self):
+        with patch.dict(os.environ,{'GEMINI_API_KEY':'gemini-test-credential'}):
+            with self.assertRaisesRegex(gateway.SetupError,'free-tier project'):
+                gateway.configure_gemini(self.root)
+        self.assertEqual(gateway.load_config(self.root),self.config)
+        with patch.dict(os.environ,{'GEMINI_API_KEY':'gemini-test-credential','CASPY_GEMINI_FREE_TIER_CONFIRMED':'true'}):
+            gateway.configure_gemini(self.root)
+            config=gateway.load_config(self.root);env=gateway.environment(self.root)
+            config['governance']['virtual_keys'][0]['provider_configs'][0]['allowed_models'].append('imagen-4.0-generate-001')
+            with self.assertRaisesRegex(gateway.SetupError,'approved free-tier Gemini text'):
+                gateway.validate(config,env)
+
     def test_repeated_init_preserves_credentials_and_custom_config(self):
         env_before = (self.root / ".env").read_bytes()
         target = self.root / "data/config.json"

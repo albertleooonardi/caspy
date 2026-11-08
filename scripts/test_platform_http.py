@@ -9,10 +9,12 @@ import secrets
 import tempfile
 import threading
 import unittest
+from types import SimpleNamespace
 
 from heist_api import Games, Handler
 from platform_store import Platform, NOTICE
 from test_heist_api import FakeGateway
+from cloud_storage import DatabaseSnapshots
 
 
 class Client:
@@ -62,6 +64,57 @@ class PlatformHTTPTests(unittest.TestCase):
         client=self.client()
         self.request(client,'/account/register',{'name':name,'email':name+'@example.test','password':'testing-password-123','account_type':role,'organization':name+' lab','terms_accepted':True})
         return client
+
+    def test_private_recorded_heist_details_survive_season_switch(self):
+        owner=self.register('history-owner'); other=self.register('history-other')
+        self.server.games=Games(FakeGateway(verdict='YIELD'),DatabaseSnapshots(self.server.platform,'history-old'))
+        game=self.request(owner,'/game/session',{})
+        self.request(owner,'/game/turn',{'session_id':game['id'],'prompt':'A fictional candy trade for history.'})
+        path='/account/heists/'+game['id']
+        detail=self.request(owner,path)
+        self.assertEqual(detail['messages'][0]['text'],'A fictional candy trade for history.')
+        self.assertTrue(detail['current_season'])
+        self.request(other,path,status=404)
+        self.request(self.client(),path,status=401)
+        self.server.games=Games(FakeGateway(),DatabaseSnapshots(self.server.platform,'history-new'))
+        archived=self.request(owner,path)
+        self.assertFalse(archived['current_season'])
+        self.assertEqual(archived['messages'],detail['messages'])
+        self.assertEqual(self.server.games.sessions,{})
+        self.request(other,path,status=404)
+        self.assertNotIn('evaluations',archived)
+
+    def test_profile_picture_http_requires_account_wallet_and_ownership(self):
+        owner=self.register('avatar-owner'); other=self.register('avatar-other')
+        user=self.server.platform.user(owner.cookies['caspy_account'])
+        wallet='0x'+'1'*40
+        self.server.platform.link_wallet(user,wallet)
+        self.server.nft=SimpleNamespace(config={'chain_id':84532,'contract':'0x'+'2'*40},address=lambda _:wallet,
+            call=lambda *args,**kwargs:{'owner':wallet,'image_hash':'0x'+'a'*64})
+        self.server.candy=SimpleNamespace(blob=lambda *args:b'verified fixture artwork')
+        self.request(self.client(),'/account/avatar',{'token_id':'1'},status=401)
+        self.request(other,'/account/avatar',{'token_id':'1'},status=403)
+        self.request(owner,'/account/avatar',{'token_id':'1'},origin='https://other.example',status=403)
+        result=self.request(owner,'/account/avatar',{'token_id':'1'})
+        self.assertEqual(result['user']['avatar_token'],'1')
+        self.assertTrue(self.request(owner,'/account/me')['user']['avatar_url'].endswith('a'*64+'.png'))
+        self.assertIsNone(self.request(other,'/account/me')['user']['avatar_url'])
+        self.assertIsNone(self.request(owner,'/account/avatar',{'token_id':None})['user']['avatar_url'])
+
+    def test_hosted_origin_and_secure_cookie_without_forwarded_header_trust(self):
+        self.server.allowed_origins=('https://caspy.example',)
+        self.server.secure_cookies=True
+        client=self.client()
+        self.request(client,'/account/register',{},status=403)
+        body={'name':'Hosted Player','email':'hosted@example.test','password':'testing-password-123','terms_accepted':True}
+        conn=http.client.HTTPConnection('127.0.0.1',self.server.server_port,timeout=30)
+        conn.request('POST','/account/register',json.dumps(body),{'Content-Type':'application/json','Origin':'https://caspy.example','Idempotency-Key':'hosted-registration'})
+        response=conn.getresponse()
+        self.assertEqual(response.status,200)
+        cookies=[value for key,value in response.getheaders() if key.lower()=='set-cookie']
+        self.assertTrue(cookies)
+        self.assertTrue(all('; Secure' in value and 'HttpOnly' in value for value in cookies))
+        response.read();conn.close()
 
     def test_authentication_csrf_and_server_authorization(self):
         anonymous=self.client()

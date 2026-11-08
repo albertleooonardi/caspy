@@ -1,6 +1,21 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { demoTurn, newDemo, parseEvent, readDemo, streamTurn } from './game';
+import { ApiError, request, demoTurn, newDemo, parseEvent, readDemo, streamTurn } from './game';
+
+test('account expiry and a connection failure remain distinguishable without retrying actions', async () => {
+  const originalFetch=globalThis.fetch;
+  try {
+    globalThis.fetch=async () => Response.json({detail:'Sign in to continue.'},{status:401});
+    await assert.rejects(() => request('/account/me'), (error: unknown) => error instanceof ApiError && error.status===401);
+    let calls=0;
+    globalThis.fetch=async () => {calls++;throw new TypeError('Network unavailable');};
+    await assert.rejects(() => request('/account/me'), (error: unknown) => error instanceof ApiError && error.status===0);
+    await assert.rejects(() => request('/account/avatar',{token_id:'1'}), /Check the saved status before repeating/);
+    assert.equal(calls,2);
+    globalThis.fetch=async () => new Response('<html>Private infrastructure response</html>');
+    await assert.rejects(() => request('/account/me'),(error: unknown) => error instanceof ApiError && error.status===502 && !error.message.includes('infrastructure'));
+  } finally {globalThis.fetch=originalFetch;}
+});
 
 test('SSE parser handles CRLF, keepalives, and multiline data', () => {
   assert.equal(parseEvent(': keepalive'), null);
@@ -24,6 +39,28 @@ test('an interrupted stream cannot invent an outcome', async () => {
   globalThis.fetch = async () => new Response('event: token\ndata: {"token":"Boo"}\n\n');
   try { await assert.rejects(() => streamTurn('session', 'Hello', () => {}), /stream ended early/); }
   finally { globalThis.fetch = originalFetch; }
+});
+
+test('rejected chat requests preserve the server recovery reason without retrying', async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const [status, detail] of [[401, 'Connect your wallet and sign in to continue.'], [404, 'Heist not found for this account.'], [503, 'A game or testnet connection is temporarily unavailable.']] as const) {
+      let calls = 0;
+      globalThis.fetch = async () => { calls++; return Response.json({ detail }, { status }); };
+      await assert.rejects(() => streamTurn('session', 'Hello', () => assert.fail('Rejected turn cannot emit text')), { message: detail });
+      assert.equal(calls, 1);
+    }
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('proxy HTML and malformed JSON failures show status without leaking the response body', async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const contentType of ['text/html', 'application/json']) {
+      globalThis.fetch = async () => new Response('<html>private infrastructure error</html>', { status: 502, headers: { 'content-type': contentType } });
+      await assert.rejects(() => streamTurn('session', 'Hello', () => {}), { message: 'The chat request could not finish (HTTP 502). Reconnect to check your saved turn.' });
+    }
+  } finally { globalThis.fetch = originalFetch; }
 });
 
 test('invalid authoritative attempt counts are rejected', async () => {

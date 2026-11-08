@@ -1,0 +1,15 @@
+.generation-progress { margin-top: 18px; padding: 18px; border: 1px solid #e3d5ed; border-radius: 16px; background: #faf6fd; }
+.generation-stages { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
+.generation-stages > span { display: inline-flex; align-items: center; gap: 6px; color: #8f7b9c; font-size: 12px; }
+.generation-stages i { width: 7px; height: 7px; border-radius: 50%; background: #dbcee4; }
+.generation-stages [data-active="true"] { color: #754590; font-weight: 700; }
+.generation-stages [data-active="true"] i { background: #a77bbb; box-shadow: 0 0 0 4px #eadff1; }
+.generation-stages [data-done="true"] { color: #64794e; }
+.generation-progress > p[role="status"] { display: flex; align-items: center; gap: 8px; color: #65417d; font-weight: 600; }
+.generation-progress > small { display: block; margin: 8px 0; color: #8b749a; font-variant-numeric: tabular-nums; }
+.generation-progress .generation-explanation { font-size: 13px; line-height: 1.8; }
+.reward-status-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 18px 0; color: #80698f; font-size: 13px; }
+.reward-status-actions .text-button { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.artwork-delivery-error { padding: 20px; text-align: center; font-size: 14px; }
+.artwork-delivery-error .button { margin-top: 12px; }
+@media(max-width:650px) { .reward-status-actions { align-items: flex-start; flex-direction: column; } }

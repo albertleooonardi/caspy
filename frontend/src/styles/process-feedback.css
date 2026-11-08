@@ -1,0 +1,15 @@
+.loading-state { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 32px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; color: #76518d; margin: 20px 0; }
+.loading-state>div:not(.loading-skeleton) { flex: 1; min-width: 180px; }
+.loading-state p { color: var(--muted); font-size: 14px; line-height: 1.7; margin: 8px 0 0; }
+.loading-state.compact { padding: 16px; border: 0; background: #f6f1fa; }
+.loading-skeleton { display: grid; gap: 10px; flex-basis: 100%; }
+.loading-skeleton i { height: 13px; border-radius: 8px; background: #eee7f4; animation: loading-breathe 1.8s ease-in-out infinite; }
+.loading-skeleton i:nth-child(2) { width: 80%; }.loading-skeleton i:nth-child(3) { width: 55%; }
+@keyframes loading-breathe { 50% { opacity: .45; } }
+.user-avatar { display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #eee3f5; color: #80589a; flex-shrink: 0; overflow: hidden; border: 2px solid #e0d0e9; }
+.user-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.account-link:has(.user-avatar) { display: inline-flex; align-items: center; gap: 10px; }
+@media(prefers-reduced-motion:reduce) { .loading-skeleton i { animation: none; } }
+
+.video-buffering { position: absolute; left: 16px; right: 16px; bottom: 46px; z-index: 3; pointer-events: none; }
+.video-buffering .loading-state { max-width: 440px; margin: 0 auto; background: #faf6ffed; }

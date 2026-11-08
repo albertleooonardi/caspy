@@ -16,6 +16,10 @@ from platform_store import Platform
 import test_platform_store
 import test_candy_store
 import test_platform_http
+import test_cloud_storage
+import test_wallet_sessions
+import test_social
+from database import Database
 
 
 class SupabaseFixture:
@@ -27,7 +31,7 @@ class SupabaseFixture:
             connection.execute(sql.SQL('REVOKE ALL ON SCHEMA {} FROM PUBLIC, anon, authenticated').format(sql.Identifier(self.schema)))
         self.addCleanup(self.drop_schema)
         factory=lambda target,*args,**kwargs: Platform(self.dsn,*args,schema=self.schema,**kwargs)
-        for module in (test_platform_store,test_candy_store,test_platform_http):
+        for module in (test_platform_store,test_candy_store,test_platform_http,test_cloud_storage,test_social):
             context=patch.object(module,'Platform',factory)
             context.start();self.addCleanup(context.stop)
         super().setUp()
@@ -43,7 +47,53 @@ enabled=os.environ.get('CASPY_RUN_SUPABASE_TESTS')=='1'
 class SupabasePlatformTests(SupabaseFixture,test_platform_store.PlatformTests): pass
 
 @unittest.skipUnless(enabled,'Opt in to live Supabase fixture tests.')
-class SupabaseCandyTests(SupabaseFixture,test_candy_store.CandyTests): pass
+class SupabaseCandyTests(SupabaseFixture,test_candy_store.CandyTests):
+    def test_old_wallet_constraint_migrates_without_changing_existing_reward(self):
+        first=self.earn()
+        with self.platform.db() as db:
+            db.execute('ALTER TABLE candy_jobs ADD CONSTRAINT candy_jobs_namespace_wallet_key UNIQUE(namespace,wallet)')
+            db.execute('CREATE UNIQUE INDEX candy_jobs_migrated_0 ON candy_jobs(namespace,wallet)')
+            db.execute('CREATE INDEX candy_wallet_lookup ON candy_jobs(wallet)')
+        self.candy.close()
+        self.candy=test_candy_store.CandyStore(self.platform,test_candy_store.FakeNFT(),self.root/'assets',self.renderer)
+        second=self.candy.ensure_win(test_candy_store.winner('two'),self.user,'wallet-one')
+        self.assertNotEqual(first['session_id'],second['session_id'])
+        self.assertEqual(self.candy.public(self.candy.row('one')),first)
+        with self.platform.db() as db:
+            indexes={row[0] for row in db.execute("SELECT indexname FROM pg_indexes WHERE schemaname=? AND tablename='candy_jobs'",(self.schema,))}
+            self.assertIn('candy_jobs_pkey',indexes)
+            self.assertIn('candy_wallet_lookup',indexes)
+            self.assertNotIn('candy_jobs_migrated_0',indexes)
+            self.assertNotIn('candy_jobs_namespace_wallet_key',indexes)
 
 @unittest.skipUnless(enabled and os.environ.get('CASPY_RUN_HTTP_TESTS')=='1','Opt in to live Supabase HTTP tests.')
 class SupabaseHTTPTests(SupabaseFixture,test_platform_http.PlatformHTTPTests): pass
+
+@unittest.skipUnless(enabled,'Opt in to live Supabase cloud storage fixtures.')
+class SupabaseCloudStorageTests(SupabaseFixture,test_cloud_storage.CloudStorageTests): pass
+
+
+@unittest.skipUnless(enabled,'Opt in to live Supabase wallet session fixtures.')
+class SupabaseWalletSessionTests(SupabaseFixture,test_wallet_sessions.WalletSessionTests):
+    def setUp(self):
+        super().setUp()
+        self.database = Database(self.dsn, schema=self.schema)
+
+    def test_private_table_permissions(self):
+        self.instance()
+        with self.database.connect() as db:
+            row = db.execute("SELECT relrowsecurity FROM pg_class WHERE oid='wallet_sessions'::regclass").fetchone()
+            self.assertTrue(row[0])
+            for role in ('anon', 'authenticated'):
+                self.assertFalse(db.execute("SELECT has_table_privilege(?, 'wallet_sessions', 'SELECT')", (role,)).fetchone()[0])
+
+
+@unittest.skipUnless(enabled,'Opt in to live Supabase social fixtures.')
+class SupabaseSocialTests(SupabaseFixture,test_social.SocialTests):
+    def test_social_tables_are_private(self):
+        database = Database(self.dsn, schema=self.schema)
+        with database.connect() as db:
+            for table in ('friend_codes','friendships'):
+                self.assertTrue(db.execute("SELECT relrowsecurity FROM pg_class WHERE oid=?::regclass",(table,)).fetchone()[0])
+                for role in ('anon','authenticated'):
+                    self.assertFalse(db.execute("SELECT has_table_privilege(?, ?, 'SELECT')",(role,table)).fetchone()[0])
