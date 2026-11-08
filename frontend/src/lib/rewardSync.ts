@@ -9,15 +9,18 @@ export async function syncReward<T extends Snapshot>(
   publish: (snapshot: T) => void,
   current: () => boolean,
   onChainError: () => void,
+  onConfirmed: () => void = () => {},
 ): Promise<MintStatus | undefined> {
   const game = await fetchGame();
   if (!current()) return;
   publish(game);
+  if (game.minted) onConfirmed();
   if (game.status !== 'won' || game.candy?.state !== 'ready' || game.minted) return;
   try {
     const status = await fetchMint(game.id);
     if (!current()) return;
     publish({ ...game, minted: status.minted, token_id: status.token_id, tx_hash: status.tx_hash || (game as T & { tx_hash?: string }).tx_hash });
+    if (status.minted) onConfirmed();
     return status;
   } catch {
     if (current()) onChainError();

@@ -22,3 +22,15 @@ test('RPC failure preserves ready artwork and reports a recoverable sync error',
 test('stale wallet/page results cannot overwrite the current reward', async () => {
   await syncReward(async () => ready, async () => { assert.fail('Stale chain call'); }, () => assert.fail('Stale render'), () => false, () => assert.fail('Stale error'));
 });
+test('recovered confirmation clears a prior transaction-tracking warning', async () => {
+  let warning = 'Transaction tracking was interrupted';
+  const published: unknown[] = [];
+  await syncReward(async () => ready, async () => ({ status: 'confirmed', minted: true, token_id: '1' }), snapshot => published.push(snapshot), () => true, () => assert.fail('Unexpected chain error'), () => { warning = ''; });
+  assert.equal(warning, '');
+  assert.equal((published.at(-1) as { minted: boolean }).minted, true);
+});
+test('already-persisted confirmation clears the warning without querying or resubmitting on-chain', async () => {
+  let cleared = false;
+  await syncReward(async () => ({ ...ready, minted: true }), async () => assert.fail('Confirmed mint must not query or resubmit'), () => {}, () => true, () => assert.fail('Unexpected error'), () => { cleared = true; });
+  assert.equal(cleared, true);
+});
