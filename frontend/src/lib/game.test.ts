@@ -26,6 +26,28 @@ test('an interrupted stream cannot invent an outcome', async () => {
   finally { globalThis.fetch = originalFetch; }
 });
 
+test('rejected chat requests preserve the server recovery reason without retrying', async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const [status, detail] of [[401, 'Connect your wallet and sign in to continue.'], [404, 'Heist not found for this account.'], [503, 'A game or testnet connection is temporarily unavailable.']] as const) {
+      let calls = 0;
+      globalThis.fetch = async () => { calls++; return Response.json({ detail }, { status }); };
+      await assert.rejects(() => streamTurn('session', 'Hello', () => assert.fail('Rejected turn cannot emit text')), { message: detail });
+      assert.equal(calls, 1);
+    }
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('proxy HTML and malformed JSON failures show status without leaking the response body', async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const contentType of ['text/html', 'application/json']) {
+      globalThis.fetch = async () => new Response('<html>private infrastructure error</html>', { status: 502, headers: { 'content-type': contentType } });
+      await assert.rejects(() => streamTurn('session', 'Hello', () => {}), { message: 'The chat request could not finish (HTTP 502). Reconnect to check your saved turn.' });
+    }
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test('invalid authoritative attempt counts are rejected', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response('event: final\ndata: {"attempts_remaining":8,"status":"won"}\n\n');

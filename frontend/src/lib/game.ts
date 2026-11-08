@@ -48,7 +48,19 @@ export async function streamTurn(sessionId: string, prompt: string, onToken: (to
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', 'Idempotency-Key': crypto.randomUUID() },
     body: JSON.stringify({ session_id: sessionId, prompt }),
   });
-  if (!response.ok || !response.body) throw new Error('The connection went a little ghostly. Reconnect to check your turn.');
+  if (!response.ok) {
+    let detail = response.status === 401 ? 'Your account or wallet session expired. Sign in and reconnect your wallet, then check your saved heist.'
+      : response.status === 429 ? 'The service is temporarily rate limited. Check your saved heist before trying again.'
+      : `The chat request could not finish (HTTP ${response.status}). Reconnect to check your saved turn.`;
+    try {
+      if (response.headers.get('content-type')?.includes('application/json')) {
+        const error = await response.json();
+        if (typeof error.detail === 'string' && error.detail.trim()) detail = error.detail;
+      }
+    } catch { /* Keep a readable status when the proxy response is not valid JSON. */ }
+    throw new Error(detail);
+  }
+  if (!response.body) throw new Error('The reply stream is unavailable. Reconnect to check your saved turn.');
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
