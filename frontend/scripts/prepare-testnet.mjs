@@ -20,7 +20,7 @@ try {
 const signer = privateKeyToAccount(key).address;
 const candy = JSON.parse(await readFile(new URL('blockhain/out/CaspyHeist.sol/CaspyHeist.json', root),'utf8'));
 const market = JSON.parse(await readFile(new URL('blockhain/out/CaspyCandyMarket.sol/CaspyCandyMarket.json', root),'utf8'));
-const artifacts = { chain_id:84532, signer,
+const artifacts = { version:3, chain_id:84532, signer,
   candy:{ abi:candy.abi, bytecode:candy.bytecode.object, hash:keccak256(candy.bytecode.object) },
   market:{ abi:market.abi, bytecode:market.bytecode.object, hash:keccak256(market.bytecode.object) } };
 await mkdir(new URL('frontend/public/deployment/',root),{recursive:true});

@@ -34,10 +34,10 @@ export async function execute(input) {
   }
   if(action==='check') {
     if(chain.id===84532 && getAddress(privateKeyToAccount(process.env.CASPY_NFT_SIGNER_PRIVATE_KEY).address)!==getAddress(config.signer)) throw new Error('Wrong voucher signer.');
-    if(await read('VERSION')!==2n || !(await read('hasRole',[await read('SIGNER_ROLE'),config.signer])) || getAddress(await marketRead('candy'))!==contract) throw new Error('Deploy v2 candy and marketplace contracts.');
+    if(![2n,3n].includes(await read('VERSION')) || !(await read('hasRole',[await read('SIGNER_ROLE'),config.signer])) || getAddress(await marketRead('candy'))!==contract) throw new Error('Deploy supported v2/v3 candy and marketplace contracts.');
     return { ready:true };
   }
-  if(action==='info') return { contract,market:config.market,max_supply:Number(await read('maxSupply')),minted:Number(await read('totalMinted')) };
+  if(action==='info') return { contract,market:config.market,max_supply:Number(await read('maxSupply')),minted:Number(await read('totalMinted')),version:Number(await read('VERSION')) };
   if(action==='history') {
     const head=await client.getBlockNumber();
     const logs=(await events({ address:getAddress(config.market),abi:marketAbi,eventName:'CandySold',strict:true },head))
@@ -68,11 +68,13 @@ export async function execute(input) {
     return { address:getAddress(recovered) };
   }
   if(action==='sign') {
-    if(await read('usedSessions',[sessionId]) || await read('mintedWallet',[input.to]) || await read('paused') || await read('totalMinted')>=await read('maxSupply')) throw new Error('Mint unavailable.');
+    const version=await read('VERSION');
+    if(![2n,3n].includes(version)) throw new Error('Unsupported candy contract.');
+    if(await read('usedSessions',[sessionId]) || (version===2n && await read('mintedWallet',[input.to])) || await read('paused') || await read('totalMinted')>=await read('maxSupply')) throw new Error('Mint unavailable.');
     const v={ to:getAddress(input.to),grade:input.grade,score:input.score,sessionId,promptHash:input.prompt_hash,imageHash:input.image_hash,metadataHash:input.metadata_hash,uriHash:keccak256(toBytes(input.uri)),nonce:BigInt(input.nonce),deadline:BigInt(input.deadline) };
     const signer = chain.id === 31337 ? getAddress(config.signer) : privateKeyToAccount(process.env.CASPY_NFT_SIGNER_PRIVATE_KEY);
     if(chain.id!==31337 && getAddress(signer.address)!==getAddress(config.signer)) throw new Error('Wrong voucher signer.');
-    const signature=await wallet.signTypedData({ account:signer,domain:{ name:await read('name'),version:'2',chainId:chain.id,verifyingContract:contract },types:voucherTypes,primaryType:'CandyVoucher',message:v });
+    const signature=await wallet.signTypedData({ account:signer,domain:{ name:await read('name'),version:String(version),chainId:chain.id,verifyingContract:contract },types:voucherTypes,primaryType:'CandyVoucher',message:v });
     return { ...v,nonce:String(v.nonce),deadline:String(v.deadline),uri:input.uri,chainId:chain.id,contract,signature };
   }
   const listingRows=async () => {

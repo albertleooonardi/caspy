@@ -1011,3 +1011,28 @@ on another person's behalf. `.local` addresses do not establish email ownership.
 - Backend-wallet `mintTreat/mintTrick` replaced by EIP-712 voucher mint (no hot wallet with mint rights).
 - "Semantic routing" clarified as structured judge + post-checks.
 - n8n demoted to notifications only; no authority over mints or attempts.
+
+## Checkpoint amendment — multiple rewards per wallet (8 November 2026)
+
+This requirement supersedes earlier one-candy-per-wallet rules for new v3
+seasons. A wallet may earn and mint multiple candies, each from a different
+independently confirmed eligible winning heist. Each heist has one immutable
+grade/artwork entitlement and one on-chain mint; repeat requests cannot reroll
+its grade or duplicate its token. Losses receive no candy. The collection cap
+remains 1,000 and daily image-request budgets remain enforced. Account replay
+permissions and three prompts per heist are unchanged.
+
+Implementation: v3 ERC-721 removes the lifetime wallet gate, retains usedSessions
+and supply/recipient/signature/content checks, and uses EIP-712 domain version
+3. Runtime supports legacy v2 using its original wallet gate/domain. Supabase
+removes only the namespace/wallet uniqueness constraint, retaining the heist
+primary key and all saved jobs/commitments. The result page only says a reward
+is saved when a candy entitlement exists.
+
+Activation requires a new operator-approved Base Sepolia candy contract and
+matching marketplace; the existing non-upgradeable v2 contracts cannot be
+modified. New artifacts are prepared; existing NFTs remain on the old contract.
+Do not claim live multi-reward activation until new public deployment details
+are validated and backend/frontend configuration is switched. Old season data
+must be preserved; the current collection view is scoped to its configured
+contract, so switching seasons does not automatically display old tokens.

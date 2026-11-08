@@ -46,7 +46,16 @@ enabled=os.environ.get('CASPY_RUN_SUPABASE_TESTS')=='1'
 class SupabasePlatformTests(SupabaseFixture,test_platform_store.PlatformTests): pass
 
 @unittest.skipUnless(enabled,'Opt in to live Supabase fixture tests.')
-class SupabaseCandyTests(SupabaseFixture,test_candy_store.CandyTests): pass
+class SupabaseCandyTests(SupabaseFixture,test_candy_store.CandyTests):
+    def test_old_wallet_constraint_migrates_without_changing_existing_reward(self):
+        first=self.earn()
+        with self.platform.db() as db:
+            db.execute('ALTER TABLE candy_jobs ADD CONSTRAINT candy_jobs_namespace_wallet_key UNIQUE(namespace,wallet)')
+        self.candy.close()
+        self.candy=test_candy_store.CandyStore(self.platform,test_candy_store.FakeNFT(),self.root/'assets',self.renderer)
+        second=self.candy.ensure_win(test_candy_store.winner('two'),self.user,'wallet-one')
+        self.assertNotEqual(first['session_id'],second['session_id'])
+        self.assertEqual(self.candy.public(self.candy.row('one')),first)
 
 @unittest.skipUnless(enabled and os.environ.get('CASPY_RUN_HTTP_TESTS')=='1','Opt in to live Supabase HTTP tests.')
 class SupabaseHTTPTests(SupabaseFixture,test_platform_http.PlatformHTTPTests): pass

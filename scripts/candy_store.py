@@ -59,6 +59,7 @@ class CandyStore:
         self.renderer=renderer or {'local-schnell':LocalSchnell,'hf-dev':HostedFlux,'hf-space-schnell':SpaceSchnell}[backend]()
         info=nft.call('info')
         self.cap=info['max_supply']
+        self.multiple_rewards=info.get('version',2)>=3
         self.namespace=f"{nft.config['chain_id']}:{nft.config['contract'].lower()}:{nft.config['deployment_block_hash']}"
         self.pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='caspy-flux')
         self.progress_lock=threading.Lock()
@@ -75,9 +76,13 @@ class CandyStore:
                 wallet TEXT NOT NULL,prompt TEXT NOT NULL,prompt_hash TEXT NOT NULL,normalized TEXT NOT NULL,
                 assessment TEXT NOT NULL,state TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,
                 image_hash TEXT,metadata_hash TEXT,uri TEXT,seed INTEGER NOT NULL,created INTEGER NOT NULL,error TEXT,
-                token_id TEXT,UNIQUE(namespace,wallet));
+                token_id TEXT);
             CREATE TABLE IF NOT EXISTS candy_attempts(job_id TEXT NOT NULL,created INTEGER NOT NULL);
             ''')
+            if platform.database.postgres:
+                # v2 keeps the wallet gate below; v3 keeps only the heist PK.
+                # Preserve every existing job, grade and artwork commitment.
+                db.execute('ALTER TABLE candy_jobs DROP CONSTRAINT IF EXISTS candy_jobs_namespace_wallet_key')
             # Never silently repeat a possibly billed request after a crash/restart.
             db.execute("UPDATE candy_jobs SET state='uncertain',error='A prior image request was interrupted. Retry explicitly; hosted requests may use provider credits again.' WHERE state='generating' AND namespace=?",(self.namespace,))
 
@@ -94,6 +99,8 @@ class CandyStore:
             if existing:
                 if existing['user_id']!=user['id'] or existing['namespace']!=self.namespace: raise Fault(403,'Candy belongs to another account or season.')
                 return self.public(existing)
+            if not self.multiple_rewards and db.execute('SELECT id FROM candy_jobs WHERE namespace=? AND wallet=?', (self.namespace,wallet.lower())).fetchone():
+                raise Fault(409,'This legacy contract permits one candy per wallet. Multiple rewards require the new v3 season.')
             count=db.execute('SELECT count(*) FROM candy_jobs WHERE namespace=?',(self.namespace,)).fetchone()[0]
             if count>=self.cap: raise Fault(409,'This finite candy season is fully reserved. No image call or mint is made.')
             previous=[row[0] for row in db.execute('SELECT normalized FROM candy_jobs WHERE namespace=?',(self.namespace,))]
@@ -105,7 +112,7 @@ class CandyStore:
                 db.execute('INSERT INTO candy_jobs(id,user_id,namespace,wallet,prompt,prompt_hash,normalized,assessment,state,seed,created) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
                     (game['id'],user['id'],self.namespace,wallet.lower(),prompt,digest,normalized(prompt),json.dumps(assessment),'earned',seed,int(time.time())))
             except Exception as error:
-                if isinstance(error,self.platform.integrity_error): raise Fault(409,'This wallet already has its candy entitlement for the season.') from None
+                if isinstance(error,self.platform.integrity_error): raise Fault(409,'This winning heist already has a candy reward. Refresh its saved status.') from None
                 raise
             return self.public(db.execute('SELECT * FROM candy_jobs WHERE id=?',(game['id'],)).fetchone())
 

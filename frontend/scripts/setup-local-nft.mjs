@@ -30,7 +30,7 @@ if (receipt.status !== 'success' || !receipt.contractAddress) throw new Error('D
 const marketHash = await wallet.deployContract({ account: accounts[0], abi: marketArtifact.abi, bytecode: marketArtifact.bytecode.object, args: [receipt.contractAddress] });
 const marketReceipt = await client.waitForTransactionReceipt({ hash: marketHash });
 if (marketReceipt.status !== 'success' || !marketReceipt.contractAddress) throw new Error('Marketplace deployment failed.');
-const config = { version: 2, artifact_hash, market_artifact_hash, market: marketReceipt.contractAddress, chain_id: 31337, rpc_url, contract: receipt.contractAddress, signer: accounts[1], player: accounts[2], deployment_block: String(receipt.blockNumber), deployment_block_hash: receipt.blockHash };
+const config = { version: 3, artifact_hash, market_artifact_hash, market: marketReceipt.contractAddress, chain_id: 31337, rpc_url, contract: receipt.contractAddress, signer: accounts[1], player: accounts[2], deployment_block: String(receipt.blockNumber), deployment_block_hash: receipt.blockHash };
 await mkdir(new URL('data/', root), { recursive: true });
 await writeFile(target, JSON.stringify(config, null, 2) + '\n', { mode: 0o600 });
 await execute({ action: 'check', config });

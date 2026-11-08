@@ -224,6 +224,26 @@ class NFTIntegration(unittest.TestCase):
     def test_treat_and_persistent_claim(self):
         self.finish_and_mint(2, True)
 
+    def test_multiple_winning_heists_mint_to_same_wallet(self):
+        self.sign_in(5)
+        self.server.games.gateway=FakeGateway(verdict='YIELD')
+        tokens=[]
+        for number in range(2):
+            game=self.api('/game/session', {})
+            self.api('/game/turn', {'session_id':game['id'],'prompt':f'A ghost bakery trade number {number}.'})
+            self.api('/candy/generate', {'session_id':game['id'],'accept_provider':True})
+            for _ in range(100):
+                if self.server.candy.row(game['id'])['state']!='generating': break
+                time.sleep(.05)
+            voucher=self.api('/game/voucher', {'session_id':game['id']})
+            tx=self.driver('mint',voucher=voucher)
+            status=self.api('/mint/submit',{'session_id':game['id'],'tx_hash':tx['hash']})
+            self.assertTrue(status['minted'])
+            tokens.append(status['token_id'])
+            with self.assertRaises(ValueError): self.driver('mint',voucher=voucher)
+        self.assertNotEqual(*tokens)
+        self.assertEqual(len(self.api('/candy/collection')['tokens']),2)
+
     def test_trick_and_persistent_claim(self):
         self.finish_and_mint(3, False)
 
@@ -237,7 +257,7 @@ class NFTIntegration(unittest.TestCase):
         signer_account = Account.from_mnemonic('test test test test test test test test test test test junk', account_path="m/44'/60'/0'/0/1")
         self.account = 5
         address = self.driver('address')['address']
-        signer = VoucherSigner(signer_account.key.hex(), self.config['contract'], 31337)
+        signer = VoucherSigner(signer_account.key.hex(), self.config['contract'], 31337, domain_version='3')
         uri='http://localhost/explicit-test-fixture.json'
         signed = signer.create_voucher(address, 92, '0x'+secrets.token_hex(32), *(['0x'+'12'*32]*3), uri, 1, int(time.time())+3600)
         voucher = {**signed['voucher'], 'uri': signed['uri'], 'nonce': '1', 'deadline': str(signed['voucher']['deadline']), 'signature': signed['signature'], 'chainId': 31337, 'contract': self.config['contract']}
