@@ -1,6 +1,7 @@
 """Caspy accounts, consented evaluations, and organization dataset licensing."""
 from contextlib import contextmanager
 import hashlib
+import copy
 import hmac
 from http.cookies import SimpleCookie
 import json
@@ -230,6 +231,29 @@ class Platform:
             raise Fault(404, 'Heist not found for this account.')
         return dict(row)
 
+    def recorded_heist(self, user, ident, server):
+        link=self.owns_game(user,ident)
+        with server.games.lock:
+            entry=server.games.sessions.get(ident)
+        current=entry is not None
+        if entry:
+            with entry['lock']: game=copy.deepcopy(entry['data'])
+        elif hasattr(server.games.store,'find_recorded'):
+            game,current=server.games.store.find_recorded(ident)
+        else:
+            game=None
+        if game is None:
+            raise Fault(404,'This heist is recorded, but its conversation is not available in the saved archive.')
+        result={key:game.get(key) for key in ('id','status','attempts_remaining','messages','minted','token_id')}
+        result.update(created=link['created'],current_season=current,reward=None)
+        if getattr(server,'candy',None):
+            with self.db() as db:
+                reward=db.execute('SELECT state,assessment,token_id FROM candy_jobs WHERE id=? AND user_id=?',(ident,user['id'])).fetchone()
+            if reward:
+                assessment=json.loads(reward['assessment'])
+                result['reward']={'state':reward['state'],'grade':assessment['grade_label'],'score':assessment['score'],'token_id':reward['token_id']}
+        return result
+
     def decorate(self, game, user):
         link = self.owns_game(user, game['id'])
         return {**game, 'unlimited_heists': user['role'] == 'contributor', 'research_consent': bool(link['research'] and not link['withdrawn']), 'commercial_consent': bool(link['commercial'] and not link['withdrawn']), 'campaign_id': link['campaign_id']}
@@ -418,6 +442,9 @@ class Platform:
             user = self.user(token)
             if path=='/account/me' and not post:
                 result = {'user':user}
+            elif path.startswith('/account/heists/') and not post:
+                ident=text(path.removeprefix('/account/heists/'),'Heist ID',1,100)
+                result=self.recorded_heist(user,ident,handler.server)
             elif path=='/account/workspace' and post:
                 if user['org_id']:
                     raise Fault(409,'Your account already has a research workspace.')

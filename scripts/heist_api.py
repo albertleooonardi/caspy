@@ -231,7 +231,7 @@ class Games:
                     entry['requests'].discard(request_id)
                 if isinstance(error,urllib.error.HTTPError) and error.code==429:
                     raise RuntimeError('The AI provider has reached a request or quota limit. Your session is saved; reconnect to check your attempts and retry after the limit resets.') from None
-                raise RuntimeError('Caspy could not finish replying. Check Bifrost; reconnect to recover your session.') from None
+                raise RuntimeError('Caspy could not finish replying. Reconnect to recover your saved conversation.') from None
             data['messages'] += [{'role': 'user', 'text': prompt}, {'role': 'caspy', 'text': reply}]
             metadata = getattr(self.gateway, 'evaluation_metadata', lambda: {})()
             data['pending_evaluation'] = {**metadata, 'actor_latency_ms': round((time.monotonic()-actor_started)*1000)}

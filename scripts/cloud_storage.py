@@ -24,3 +24,13 @@ class DatabaseSnapshots:
         payload=json.dumps(value)
         with self.platform.db() as db:
             db.execute('INSERT INTO game_snapshots(namespace,payload) VALUES (?,?) ON CONFLICT(namespace) DO UPDATE SET payload=excluded.payload',(self.namespace,payload))
+
+    def find_recorded(self, ident):
+        # Called only after the account's contribution ownership is checked.
+        with self.platform.db() as db:
+            rows=db.execute('SELECT namespace,payload FROM game_snapshots').fetchall()
+        for row in rows:
+            entry=json.loads(row['payload']).get(ident)
+            if entry:
+                return entry['data'], row['namespace']==self.namespace
+        return None, False

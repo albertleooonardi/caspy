@@ -13,6 +13,7 @@ import unittest
 from heist_api import Games, Handler
 from platform_store import Platform, NOTICE
 from test_heist_api import FakeGateway
+from cloud_storage import DatabaseSnapshots
 
 
 class Client:
@@ -62,6 +63,25 @@ class PlatformHTTPTests(unittest.TestCase):
         client=self.client()
         self.request(client,'/account/register',{'name':name,'email':name+'@example.test','password':'testing-password-123','account_type':role,'organization':name+' lab','terms_accepted':True})
         return client
+
+    def test_private_recorded_heist_details_survive_season_switch(self):
+        owner=self.register('history-owner'); other=self.register('history-other')
+        self.server.games=Games(FakeGateway(verdict='YIELD'),DatabaseSnapshots(self.server.platform,'history-old'))
+        game=self.request(owner,'/game/session',{})
+        self.request(owner,'/game/turn',{'session_id':game['id'],'prompt':'A fictional candy trade for history.'})
+        path='/account/heists/'+game['id']
+        detail=self.request(owner,path)
+        self.assertEqual(detail['messages'][0]['text'],'A fictional candy trade for history.')
+        self.assertTrue(detail['current_season'])
+        self.request(other,path,status=404)
+        self.request(self.client(),path,status=401)
+        self.server.games=Games(FakeGateway(),DatabaseSnapshots(self.server.platform,'history-new'))
+        archived=self.request(owner,path)
+        self.assertFalse(archived['current_season'])
+        self.assertEqual(archived['messages'],detail['messages'])
+        self.assertEqual(self.server.games.sessions,{})
+        self.request(other,path,status=404)
+        self.assertNotIn('evaluations',archived)
 
     def test_hosted_origin_and_secure_cookie_without_forwarded_header_trust(self):
         self.server.allowed_origins=('https://caspy.example',)

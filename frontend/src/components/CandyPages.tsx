@@ -5,6 +5,7 @@ import { IS_NFT_ENABLED, LIVE_SESSION_KEY, request, type Session } from '../lib/
 import { mintVoucher, tradeCandy, CANDY_NETWORK, LOCAL_TEST_WALLET, PROMPT_LICENSE, type Voucher } from '../lib/wallet';
 import { RewardJourney } from './RewardJourney';
 import { syncReward, type MintStatus } from '../lib/rewardSync';
+import { autoRefresh } from '../lib/autoRefresh';
 import '../styles/reward-progress.css';
 
 export type Assessment = { grade: number; grade_label: string; score: number; components: Record<string, number>; comparison_count: number; closest_similarity: number; rule_version: string };
@@ -32,7 +33,7 @@ function GenerationProgress({ candy }: { candy: EarnedCandy }) {
   const labels: Record<string, string> = { queued: 'Preparing your request', connecting: 'Starting your candy artwork', waiting_provider: 'Creating your candy artwork', downloading: 'Receiving your candy artwork', validating: 'Checking the finished image', saving: 'Saving your candy securely' };
   const seconds = candy.generation_started_at ? Math.max(0, Math.floor(now / 1000 - candy.generation_started_at)) : null;
   const stage = ['downloading', 'validating', 'saving'].includes(phase) ? 2 : phase === 'queued' ? 0 : 1;
-  return <div className="generation-progress"><div className="generation-stages" aria-hidden="true">{['Prepare', 'Create candy', 'Save artwork'].map((label, index) => <span key={label} data-active={stage === index} data-done={stage > index}>{index < stage ? <CheckCircle2 size={14} /> : <i />}{label}</span>)}</div><p role="status"><LoaderCircle className="spin" size={17} /> {labels[phase] || 'Preparing your candy'}</p>{seconds !== null && <small aria-hidden="true">Elapsed {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}</small>}<p className="generation-explanation">Your candy is being created from your winning words. This may take a few minutes. Your grade is saved, and you can safely leave and return. Refreshing checks progress without starting again.</p></div>;
+  return <div className="generation-progress"><div className="generation-stages" aria-hidden="true">{['Prepare', 'Create candy', 'Save artwork'].map((label, index) => <span key={label} data-active={stage === index} data-done={stage > index}>{index < stage ? <CheckCircle2 size={14} /> : <i />}{label}</span>)}</div><p role="status"><LoaderCircle className="spin" size={17} /> {labels[phase] || 'Preparing your candy'}</p>{seconds !== null && <small aria-hidden="true">Elapsed {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}</small>}<p className="generation-explanation">Your candy is being created from your winning words. This may take a few minutes. Your grade is saved, and you can safely leave and return. This page updates automatically as soon as your artwork is ready.</p></div>;
 }
 export function CandyResult({ wallet, openWallet }: { wallet: string; openWallet: () => void }) {
   const [syncError, setSyncError] = useState('');
@@ -72,17 +73,8 @@ export function CandyResult({ wallet, openWallet }: { wallet: string; openWallet
   }, [wallet]);
   useEffect(() => {
     if (game?.candy?.state !== 'generating' && busy !== 'Waiting for mint confirmation…') return;
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
-      if (!stopped && document.visibilityState !== 'hidden') {
-        try { await load(); }
-        catch { if (!stopped) setSyncError('We couldn’t check the latest progress. Your candy is saved as it is created; use Refresh status to check again.'); }
-      }
-      if (!stopped) timer = setTimeout(() => { void poll(); }, 4000);
-    };
-    timer = setTimeout(() => { void poll(); }, 2500);
-    return () => { stopped = true; clearTimeout(timer); };
+    return autoRefresh({ refresh:load, visible:() => document.visibilityState !== 'hidden', events:[window,document],
+      onError:() => setSyncError('Reconnecting to your candy’s progress automatically. Your saved artwork and grade are safe.') });
   }, [game?.candy?.state, busy, wallet]);
   useEffect(() => { if (game?.minted) setBusy(''); }, [game?.minted]);
   async function refreshStatus() {
