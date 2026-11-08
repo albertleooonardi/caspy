@@ -1,4 +1,5 @@
 import hashlib
+from contextlib import contextmanager
 import json
 from pathlib import Path
 import shutil
@@ -41,6 +42,25 @@ class CloudStorageTests(unittest.TestCase):
                 if row['state']!='generating': break
                 time.sleep(.02)
             self.assertEqual(row['state'],'ready')
+            # PostgreSQL uses a transaction-scoped advisory lock. A nested
+            # metadata read on a new connection deadlocks even under an RLock.
+            original=self.platform.db
+            depth=0
+            @contextmanager
+            def non_nested():
+                nonlocal depth
+                self.assertEqual(depth,0,'Artwork status opened nested database transactions')
+                depth+=1
+                try:
+                    with original() as db: yield db
+                finally: depth-=1
+            with patch.object(self.platform,'db',non_nested):
+                saved=candy.ensure_win(winner(),user,'wallet')
+                self.assertEqual(saved['state'],'ready')
+                self.assertEqual(candy.generate('one',user,True)['state'],'ready')
+                with patch.object(candy,'row',return_value={**dict(row),'state':'earned'}):
+                    self.assertEqual(candy.generate('one',user,True)['state'],'ready')
+                self.assertEqual(saved['attempts'],1)
             manifest=json.loads(candy.blob(row['metadata_hash'],'json'))
             self.assertTrue(manifest['image'].startswith('https://caspy.example/api/candy/'))
             candy.close();shutil.rmtree(self.root/'assets')

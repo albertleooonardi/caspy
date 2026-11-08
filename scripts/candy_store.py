@@ -89,6 +89,10 @@ class CandyStore:
     def close(self): self.pool.shutdown(wait=True)
 
     def ensure_win(self,game,user,wallet):
+        row=self._reserve_win(game,user,wallet)
+        return self.public(row) if row is not None else None
+
+    def _reserve_win(self,game,user,wallet):
         if game['status']!='won': return None
         ev=(game.get('evaluations') or [{}])[-1]
         if ev.get('verdict')!='YIELD' or ev.get('exploit_flag') or ev.get('category')=='exploit_attempt' or ev.get('confidence',0)<.8:
@@ -98,7 +102,7 @@ class CandyStore:
             existing=db.execute('SELECT * FROM candy_jobs WHERE id=?',(game['id'],)).fetchone()
             if existing:
                 if existing['user_id']!=user['id'] or existing['namespace']!=self.namespace: raise Fault(403,'Candy belongs to another account or season.')
-                return self.public(existing)
+                return existing
             if not self.multiple_rewards and db.execute('SELECT id FROM candy_jobs WHERE namespace=? AND wallet=?', (self.namespace,wallet.lower())).fetchone():
                 raise Fault(409,'This legacy contract permits one candy per wallet. Multiple rewards require the new v3 season.')
             count=db.execute('SELECT count(*) FROM candy_jobs WHERE namespace=?',(self.namespace,)).fetchone()[0]
@@ -114,7 +118,7 @@ class CandyStore:
             except Exception as error:
                 if isinstance(error,self.platform.integrity_error): raise Fault(409,'This winning heist already has a candy reward. Refresh its saved status.') from None
                 raise
-            return self.public(db.execute('SELECT * FROM candy_jobs WHERE id=?',(game['id'],)).fetchone())
+            return db.execute('SELECT * FROM candy_jobs WHERE id=?',(game['id'],)).fetchone()
 
     def row(self,ident,user=None):
         with self.platform.db() as db: row=db.execute('SELECT * FROM candy_jobs WHERE id=? AND namespace=?',(ident,self.namespace)).fetchone()
@@ -165,17 +169,19 @@ class CandyStore:
         row=self.row(ident,user)
         if row['state'] in ('ready','generating'): return self.public(row)
         if not self.renderer.configured:
-            raise Fault(503,'Prepare local Schnell with bash scripts/shell/setup-flux.sh, then restart Caspy.' if getattr(self.renderer,'local',False) else 'Hosted FLUX requires HF_TOKEN and provider credits.')
+            raise Fault(503,'Candy creation is temporarily unavailable. Your win and grade are saved; please return later.')
         if row['state'] in ('failed','uncertain') and retry is not True: raise Fault(409,'Explicitly confirm a retry; local retries use compute and hosted retries may incur another charge.')
         with self.platform.db() as db:
             # Re-read under the transaction lock to prevent duplicate calls.
             row=db.execute('SELECT * FROM candy_jobs WHERE id=?',(ident,)).fetchone()
-            if row['state'] in ('ready','generating'): return self.public(row)
-            if row['attempts']>=3: raise Fault(429,'Image retry limit reached. No rerolls or further provider calls are allowed.')
-            used=db.execute('SELECT count(*) FROM candy_attempts WHERE created>=?',(int(time.time())//86400*86400,)).fetchone()[0]
-            if used>=self.budget: raise Fault(429,'The daily image-generation budget is exhausted. Your earned grade is saved.')
-            db.execute("UPDATE candy_jobs SET state='generating',attempts=attempts+1,error=NULL WHERE id=?",(ident,))
-            db.execute('INSERT INTO candy_attempts VALUES (?,?)',(ident,int(time.time())))
+            existing_request=row['state'] in ('ready','generating')
+            if not existing_request:
+                if row['attempts']>=3: raise Fault(429,'Image retry limit reached. No rerolls or further provider calls are allowed.')
+                used=db.execute('SELECT count(*) FROM candy_attempts WHERE created>=?',(int(time.time())//86400*86400,)).fetchone()[0]
+                if used>=self.budget: raise Fault(429,'The daily image-generation budget is exhausted. Your earned grade is saved.')
+                db.execute("UPDATE candy_jobs SET state='generating',attempts=attempts+1,error=NULL WHERE id=?",(ident,))
+                db.execute('INSERT INTO candy_attempts VALUES (?,?)',(ident,int(time.time())))
+        if existing_request: return self.public(row)
         self.progress(ident,'queued')
         self.pool.submit(self._run,ident)
         return self.public(self.row(ident,user))
