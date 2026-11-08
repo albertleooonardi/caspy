@@ -580,6 +580,8 @@ def main():
     gateway = Gateway()
     from database import database_url
     server.platform = Platform(database_url(environment(ROOT)), gateway.evaluation_metadata())
+    if server.nft:
+        server.nft.persist_sessions(server.platform.database)
     if settings['production'] and server.nft:
         from cloud_storage import DatabaseSnapshots
         config = server.nft.config

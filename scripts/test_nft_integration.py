@@ -55,6 +55,7 @@ class NFTIntegration(unittest.TestCase):
         cls.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
         cls.server.nft = LocalNFT(cls.config)
         cls.server.platform = Platform(Path(cls.temp.name) / 'platform.sqlite3')
+        cls.server.nft.persist_sessions(cls.server.platform.database)
         cls.server.candy = CandyStore(cls.server.platform, cls.server.nft, Path(cls.temp.name)/'assets', FixtureRenderer())
         cls.server.nft.candies = cls.server.candy
         cls.store = Path(cls.temp.name) / 'games.json'

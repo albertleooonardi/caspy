@@ -17,6 +17,8 @@ import test_platform_store
 import test_candy_store
 import test_platform_http
 import test_cloud_storage
+import test_wallet_sessions
+from database import Database
 
 
 class SupabaseFixture:
@@ -51,3 +53,18 @@ class SupabaseHTTPTests(SupabaseFixture,test_platform_http.PlatformHTTPTests): p
 
 @unittest.skipUnless(enabled,'Opt in to live Supabase cloud storage fixtures.')
 class SupabaseCloudStorageTests(SupabaseFixture,test_cloud_storage.CloudStorageTests): pass
+
+
+@unittest.skipUnless(enabled,'Opt in to live Supabase wallet session fixtures.')
+class SupabaseWalletSessionTests(SupabaseFixture,test_wallet_sessions.WalletSessionTests):
+    def setUp(self):
+        super().setUp()
+        self.database = Database(self.dsn, schema=self.schema)
+
+    def test_private_table_permissions(self):
+        self.instance()
+        with self.database.connect() as db:
+            row = db.execute("SELECT relrowsecurity FROM pg_class WHERE oid='wallet_sessions'::regclass").fetchone()
+            self.assertTrue(row[0])
+            for role in ('anon', 'authenticated'):
+                self.assertFalse(db.execute("SELECT has_table_privilege(?, 'wallet_sessions', 'SELECT')", (role,)).fetchone()[0])
