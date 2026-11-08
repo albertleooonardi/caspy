@@ -21,18 +21,25 @@ export function newDemo(): Session {
   saveDemo(session);
   return session;
 }
+export class ApiError extends Error {
+  constructor(message: string, public status: number) { super(message); this.name='ApiError'; }
+}
 export async function request<T>(path: string, body?: unknown, baseUrl = API_URL, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, {
+  let response: Response;
+  try { response = await fetch(`${baseUrl}${path}`, {
     method: body === undefined ? 'GET' : 'POST', credentials: 'include',
     headers: body === undefined ? {} : { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
-    body: body === undefined ? undefined : JSON.stringify(body), signal,
-  });
+    body: body === undefined ? undefined : JSON.stringify(body), signal: signal || (body === undefined ? AbortSignal.timeout(30000) : undefined),
+  }); } catch {
+    throw new ApiError(body === undefined ? 'We couldn’t load the latest details. Check your connection and try again; your saved progress is safe.' : 'The connection was interrupted. Check the saved status before repeating this action.',0);
+  }
   if (!response.ok) {
     let detail = 'Caspy lost the connection. Please try again.';
     try { const error = await response.json(); if (typeof error.detail === 'string') detail = error.detail; } catch { /* Preserve readable fallback. */ }
-    throw new Error(detail);
+    throw new ApiError(detail,response.status);
   }
-  return response.json();
+  try { return await response.json(); }
+  catch { throw new ApiError('We couldn’t read the latest update. Check the saved status before repeating this action.',502); }
 }
 
 export function parseEvent(block: string): { event: string; data: string } | null {

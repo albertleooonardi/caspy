@@ -39,6 +39,28 @@ class PlatformTests(unittest.TestCase):
     def register(self, name, role='contributor', **extra):
         return self.store.authenticate({'name':name, 'email':name+'@example.test', 'password':'testing-password-123', 'account_type':role, 'organization':name+' lab', 'terms_accepted':True, **extra}, '127.0.0.1', '', True)
 
+    def test_candy_profile_picture_is_verified_persistent_private_and_resettable(self):
+        wallet='0x'+'1'*40
+        self.store.link_wallet(self.player,wallet)
+        token={'owner':wallet,'image_hash':'0x'+'a'*64}
+        nft=SimpleNamespace(address=lambda _:wallet,call=lambda *args,**kwargs:token,
+                            config={'chain_id':84532,'contract':'0x'+'2'*40})
+        candy=SimpleNamespace(blob=lambda digest,kind: b'fixture verified artwork')
+        self.store.set_avatar(self.player,{'token_id':'1'},nft,candy,'verified-session')
+        restored=Platform(self.path)
+        selected=restored.user(self.player_token)
+        self.assertEqual(selected['avatar_url'],'/api/candy/images/'+'a'*64+'.png')
+        self.assertEqual(selected['avatar_token'],'1')
+        self.assertIsNone(restored.user(self.buyer_token)['avatar_url'])
+        with self.assertRaises(Fault): self.store.set_avatar(self.buyer,{'token_id':'1'},nft,candy,'verified-session')
+        token['owner']='0x'+'3'*40
+        with self.assertRaises(Fault): self.store.set_avatar(self.player,{'token_id':'1'},nft,candy,'verified-session')
+        self.assertEqual(self.store.user(self.player_token)['avatar_url'],selected['avatar_url'])
+        for body in ({'token_id':'https://example.test/evil.png'},{'avatar_url':'https://example.test/evil.png'}):
+            with self.assertRaises(Fault): self.store.set_avatar(self.player,body,nft,candy,'verified-session')
+        self.store.set_avatar(self.player,{'token_id':None},None,None,'')
+        self.assertIsNone(self.store.user(self.player_token)['avatar_url'])
+
     def route(self, path, token, body=None):
         handler = HandlerStub(path,token)
         self.assertTrue(self.store.handle(handler,body))

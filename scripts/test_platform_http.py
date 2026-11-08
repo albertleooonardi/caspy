@@ -9,6 +9,7 @@ import secrets
 import tempfile
 import threading
 import unittest
+from types import SimpleNamespace
 
 from heist_api import Games, Handler
 from platform_store import Platform, NOTICE
@@ -82,6 +83,23 @@ class PlatformHTTPTests(unittest.TestCase):
         self.assertEqual(self.server.games.sessions,{})
         self.request(other,path,status=404)
         self.assertNotIn('evaluations',archived)
+
+    def test_profile_picture_http_requires_account_wallet_and_ownership(self):
+        owner=self.register('avatar-owner'); other=self.register('avatar-other')
+        user=self.server.platform.user(owner.cookies['caspy_account'])
+        wallet='0x'+'1'*40
+        self.server.platform.link_wallet(user,wallet)
+        self.server.nft=SimpleNamespace(config={'chain_id':84532,'contract':'0x'+'2'*40},address=lambda _:wallet,
+            call=lambda *args,**kwargs:{'owner':wallet,'image_hash':'0x'+'a'*64})
+        self.server.candy=SimpleNamespace(blob=lambda *args:b'verified fixture artwork')
+        self.request(self.client(),'/account/avatar',{'token_id':'1'},status=401)
+        self.request(other,'/account/avatar',{'token_id':'1'},status=403)
+        self.request(owner,'/account/avatar',{'token_id':'1'},origin='https://other.example',status=403)
+        result=self.request(owner,'/account/avatar',{'token_id':'1'})
+        self.assertEqual(result['user']['avatar_token'],'1')
+        self.assertTrue(self.request(owner,'/account/me')['user']['avatar_url'].endswith('a'*64+'.png'))
+        self.assertIsNone(self.request(other,'/account/me')['user']['avatar_url'])
+        self.assertIsNone(self.request(owner,'/account/avatar',{'token_id':None})['user']['avatar_url'])
 
     def test_hosted_origin_and_secure_cookie_without_forwarded_header_trust(self):
         self.server.allowed_origins=('https://caspy.example',)

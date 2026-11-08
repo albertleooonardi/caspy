@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ArrowRight, ArrowUpRight, CheckCircle2, Clock3, Ghost, Play, Pause, ShieldCheck, Volume2, VolumeX, SkipBack, SkipForward, RotateCcw, Repeat2, BookOpen, FlaskConical, Sparkles } from 'lucide-react';
 import { IS_DEMO, IS_NFT_ENABLED } from '../lib/game';
+import LoadingState from './LoadingState';
 import { chapters, chapterAt, timestamp, walkthroughDuration } from '../lib/walkthrough';
 
 const mediaVersion = 'kinetic-halloween-website-v5';
@@ -12,6 +13,7 @@ export function WalkthroughPlayer({ compact = false, seekRequest }: { compact?: 
   const chapterButtons = useRef<(HTMLButtonElement | null)[]>([]);
   const pendingSeek = useRef<number | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
+  const [buffering,setBuffering]=useState(false);
   const [playing, setPlaying] = useState(false);
   const [started, setStarted] = useState(false);
   const [muted, setMuted] = useState(true);
@@ -27,9 +29,9 @@ export function WalkthroughPlayer({ compact = false, seekRequest }: { compact?: 
   function play() {
     const player = video.current;
     if (!player) return;
-    setFailed(false);
+    setFailed(false);setBuffering(true);
     void player.play().catch(() => {
-      setStarted(false);
+      setStarted(false);setBuffering(false);
       setStatus('Playback did not start. Try the native play control, or open the film directly.');
     });
   }
@@ -72,15 +74,15 @@ export function WalkthroughPlayer({ compact = false, seekRequest }: { compact?: 
       <video ref={video} controls playsInline muted={muted} preload="metadata" width="1600" height="900"
         poster={`/videos/caspy-showcase-poster.jpg?v=${mediaVersion}`} aria-label="Caspy field guide: animated typography with Halloween music and wordless ghost choir, no narration"
         onLoadedMetadata={event => { if (pendingSeek.current !== null) { event.currentTarget.currentTime = pendingSeek.current; pendingSeek.current = null; } }}
-        onTimeUpdate={event => timeUpdate(event.currentTarget)} onPlay={() => { setPlaying(true); setStarted(true); }} onPause={() => setPlaying(false)}
+        onTimeUpdate={event => timeUpdate(event.currentTarget)} onPlay={() => { setPlaying(true); setStarted(true); }} onPause={() => {setPlaying(false);setBuffering(false);}} onWaiting={() => setBuffering(true)} onStalled={() => {if(playing) setBuffering(true);}} onPlaying={() => setBuffering(false)} onSeeked={() => setBuffering(false)}
         onVolumeChange={event => setMuted(event.currentTarget.muted || event.currentTarget.volume === 0)} onRateChange={event => setRate(event.currentTarget.playbackRate)}
-        onEnded={() => { if (loopIndex !== null) jump(loopIndex); else { setPlaying(false); setStatus('Film complete. Replay a chapter or choose your next step.'); } }}
-        onError={() => { setFailed(true); setStatus('The film could not load. The written guide below is always available.'); }}>
+        onEnded={() => { setBuffering(false); if (loopIndex !== null) jump(loopIndex); else { setPlaying(false); setStatus('Film complete. Replay a chapter or choose your next step.'); } }}
+        onError={() => { setFailed(true);setBuffering(false); setStatus('The film could not load. The written guide below is always available.'); }}>
         <source src={videoUrl} type="video/mp4" />
         <track kind="captions" src={`/videos/caspy-showcase.en.vtt?v=${mediaVersion}`} srcLang="en" label="English instructions" />
         Your browser cannot play this film. <a href={videoUrl}>Download it</a> or read the written guide below.
       </video>
-      {interactive && !started && !failed && <button className="motion-play-cover" onClick={play} aria-label="Play the 100-second field guide, initially muted"><span><Play size={30} fill="currentColor" /></span><b>Step into the story.</b><small>{timestamp(walkthroughDuration)} · animated field guide · no narration</small></button>}
+      {buffering && !failed && <div className="video-buffering"><LoadingState title="Loading the film…" detail="Playback will continue as soon as the next part is ready." compact/></div>}{interactive && !started && !failed && !buffering && <button className="motion-play-cover" onClick={play} aria-label="Play the 100-second field guide, initially muted"><span><Play size={30} fill="currentColor" /></span><b>Step into the story.</b><small>{timestamp(walkthroughDuration)} · animated field guide · no narration</small></button>}
     </div>{!compact && <aside className="motion-chapter-note" aria-label="Current chapter instructions"><span className="eyebrow">IN THIS CHAPTER</span><div className="motion-chapter-number">{String(active + 1).padStart(2, '0')}<span> / {chapters.length}</span></div><h2>{chapter.label}</h2><p>{chapter.body}</p><div className="motion-tip"><Sparkles size={16} /><span>{chapter.tip}</span></div><a className="inline-link" href={chapter.href}>{chapter.action}<ArrowUpRight size={16} /></a></aside>}</div>
     <div className="motion-controls"><div className="motion-transport"><button onClick={() => playing ? video.current?.pause() : play()} aria-label={playing ? 'Pause film' : 'Play film'}>{playing ? <Pause size={18} /> : <Play size={18} />}</button><button onClick={() => jump(active - 1)} disabled={active === 0} aria-label="Previous chapter"><SkipBack size={17} /></button><button onClick={() => jump(active)} aria-label="Replay current chapter"><RotateCcw size={17} /></button><button onClick={() => jump(active + 1)} disabled={active === chapters.length - 1} aria-label="Next chapter"><SkipForward size={17} /></button><span className="motion-time">{timestamp(currentTime)} <span>/ {timestamp(walkthroughDuration)}</span></span></div><div className="motion-options"><button className={loopIndex !== null ? 'enabled' : ''} aria-pressed={loopIndex !== null} onClick={() => { setLoopIndex(loopIndex === null ? active : null); setStatus(loopIndex === null ? 'This chapter will repeat until you turn looping off.' : 'Chapter looping off.'); }}><Repeat2 size={16} /><span>Loop chapter</span></button><label><span className="sr-only">Playback speed</span><select aria-label="Playback speed" value={rate} onChange={event => { const speed = Number(event.target.value); setRate(speed); if (video.current) video.current.playbackRate = speed; }}><option value="0.75">0.75×</option><option value="1">1× speed</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option></select></label><button onClick={() => { const next = !muted; setMuted(next); if (video.current) { video.current.muted = next; if (!next && video.current.volume === 0) video.current.volume = .7; } setStatus(next ? 'Sound off.' : 'Halloween music and wordless ghost choir on. No narration.'); }} aria-pressed={!muted} aria-label={muted ? 'Enable Halloween soundtrack' : 'Mute Halloween soundtrack'}>{muted ? <VolumeX size={17} /> : <Volume2 size={17} />}<span>{muted ? 'Sound off' : 'Halloween sound'}</span></button></div></div>
     <div className="motion-progress" aria-hidden="true"><span style={{ width: `${currentTime / walkthroughDuration * 100}%` }} /></div>

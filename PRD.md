@@ -1036,3 +1036,20 @@ Do not claim live multi-reward activation until new public deployment details
 are validated and backend/frontend configuration is switched. Old season data
 must be preserved; the current collection view is scoped to its configured
 contract, so switching seasons does not automatically display old tokens.
+
+## Profile and process feedback amendment — 8 November 2026
+
+Account settings now support persisted candy NFT profile pictures. Selection
+requires the authenticated account, linked verified wallet, current ownership
+of the configured collection token and its committed saved artwork. A default
+ghost can be restored. No arbitrary image URL/upload, transaction or change to
+research consent is part of this flow. Selections are cosmetic and verified at
+selection time; ownership checks for NFT actions remain separate.
+
+Loading must distinguish initial fetch, background update, action/signature
+waiting, buffering, success, unavailable and genuine empty states. Existing
+content remains visible during background refresh. Slow requests receive plain
+language guidance, rather than alarming error styling or fake progress. A
+network failure is not treated as account expiry. Status checks may retry;
+generation, signing and financial actions never retry automatically. See
+docs/loading-profile-review-2026-11-08.md for tested coverage and browser limits.

@@ -1,6 +1,21 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { demoTurn, newDemo, parseEvent, readDemo, streamTurn } from './game';
+import { ApiError, request, demoTurn, newDemo, parseEvent, readDemo, streamTurn } from './game';
+
+test('account expiry and a connection failure remain distinguishable without retrying actions', async () => {
+  const originalFetch=globalThis.fetch;
+  try {
+    globalThis.fetch=async () => Response.json({detail:'Sign in to continue.'},{status:401});
+    await assert.rejects(() => request('/account/me'), (error: unknown) => error instanceof ApiError && error.status===401);
+    let calls=0;
+    globalThis.fetch=async () => {calls++;throw new TypeError('Network unavailable');};
+    await assert.rejects(() => request('/account/me'), (error: unknown) => error instanceof ApiError && error.status===0);
+    await assert.rejects(() => request('/account/avatar',{token_id:'1'}), /Check the saved status before repeating/);
+    assert.equal(calls,2);
+    globalThis.fetch=async () => new Response('<html>Private infrastructure response</html>');
+    await assert.rejects(() => request('/account/me'),(error: unknown) => error instanceof ApiError && error.status===502 && !error.message.includes('infrastructure'));
+  } finally {globalThis.fetch=originalFetch;}
+});
 
 test('SSE parser handles CRLF, keepalives, and multiline data', () => {
   assert.equal(parseEvent(': keepalive'), null);

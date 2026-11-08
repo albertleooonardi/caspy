@@ -1,0 +1,21 @@
+.account-refresh { padding-block: 36px 64px; }
+.profile-identity { display: flex; gap: 24px; align-items: center; padding: 32px; background: linear-gradient(120deg,#eee4f5,#fff9f2); border: 1px solid var(--line); border-radius: 22px; margin-bottom: 24px; }
+.profile-identity h1 { font-size: clamp(32px,4vw,52px); margin: 8px 0 10px; }
+.profile-identity>div { display: grid; justify-items: start; gap: 8px; }
+.profile-identity>p { margin-left: auto; color: var(--muted); line-height: 1.8; }
+.profile-role { font-size: 12px; color: #76518d; background: #e8ddf0; border-radius: 20px; padding: 6px 12px; }
+.account-refresh>.platform-grid { margin-bottom: 24px; }
+.account-refresh details>summary { cursor: pointer; font-weight: 600; padding: 10px 0; }
+.account-refresh .account-help { font-size: 14px; color: var(--muted); }
+.avatar-dialog { width: min(650px,calc(100vw - 32px)); max-height: 85dvh; padding: 32px; border: 1px solid #dfd1e9; border-radius: 24px; background: var(--surface); color: var(--ink); }
+.avatar-dialog::backdrop { background: #24163588; backdrop-filter: blur(4px); }
+.avatar-dialog>p { color: var(--muted); line-height: 1.7; }.avatar-close { float: right; }
+.avatar-choices { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; margin-block: 24px; }
+.avatar-choices button { display: grid; justify-items: center; gap: 8px; padding: 12px; background: #fbf8fe; color: var(--ink); border: 2px solid #e7dced; border-radius: 16px; cursor: pointer; }
+.avatar-choices button[aria-pressed=true] { border-color: #81549b; background: #eee3f5; }
+.avatar-choices button:focus-visible { outline: 3px solid #81549b; outline-offset: 3px; }
+.avatar-choices img,.avatar-default { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 12px; }.avatar-default { display: grid; place-items: center; background: #eee4f4; }
+.avatar-dialog-actions { display: flex; gap: 12px; justify-content: flex-end; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 20px; }
+@media(max-width:650px) { .profile-identity { flex-wrap: wrap; padding: 22px; gap: 16px; }.profile-identity>p { margin: 0; flex-basis: 100%; }.avatar-dialog { padding: 22px; }.avatar-choices { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+
+.dashboard-welcome h1 { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }

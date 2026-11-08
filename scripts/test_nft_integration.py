@@ -156,6 +156,9 @@ class NFTIntegration(unittest.TestCase):
         status = self.api('/mint/submit', {'session_id': game['id'], 'tx_hash': transaction['hash']})
         self.assertTrue(status['minted'])
         self.assertEqual(status['status'], 'confirmed')
+        avatar=self.api('/account/avatar',{'token_id':status['token_id']})['user']
+        self.assertTrue(avatar['avatar_url'].endswith('.png'))
+        self.assertEqual(self.api('/account/me')['user']['avatar_token'],status['token_id'])
         self.assertTrue(self.api('/mint/status/' + game['id'])['minted'])
         self.api('/game/voucher', {'session_id': game['id']}, expected=400)
         with self.assertRaises(ValueError):
@@ -184,6 +187,7 @@ class NFTIntegration(unittest.TestCase):
         seller_cookie,seller_cookies=self.cookie,dict(self.cookies)
         seller=self.account
         buyer=self.sign_in(8)
+        self.api('/account/avatar',{'token_id':status['token_id']},expected=403)
         self.api('/candy/prompt/'+status['token_id'],expected=403)
         purchase=self.driver('write',contract=self.config['market'],market=True,function_name='buy',args=[listed['listing_id']],value='1000')
         history=self.api('/market/history')
@@ -200,6 +204,7 @@ class NFTIntegration(unittest.TestCase):
         self.assertGreater(sale['timestamp'],0)
         self.assertEqual(self.api('/candy/prompt/'+status['token_id'])['prompt'],'A clever ghost bakery trade.')
         self.assertEqual(self.api('/candy/collection')['tokens'][0]['owner'].lower(),buyer.lower())
+        self.assertEqual(self.api('/account/avatar',{'token_id':status['token_id']})['user']['avatar_token'],status['token_id'])
         # A resale asking price and its cancellation never become recorded sales.
         self.driver('write',contract=self.config['contract'],function_name='approve',args=[self.config['market'],status['token_id']])
         self.driver('write',contract=self.config['market'],market=True,function_name='list',args=[status['token_id'],'2000'])
