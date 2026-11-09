@@ -1,6 +1,7 @@
 # Caspy's Prompt Heist — Project Steering
 
-Checkpoint: **6 November 2026**. This file is the continuation guide for Kiro.
+Checkpoint: **8 November 2026** (later dated sections below supersede earlier
+ones where they differ). This file is the continuation guide for Kiro.
 Read the implementation before changing behavior; distinguish completed work,
 observed QA, and future production requirements. Full requirements:
 #[[file:PRD.md]], especially sections 20–22. Older architecture proposals in the
@@ -32,6 +33,23 @@ Only API port 8000 may be forwarded after readiness; never expose Bifrost/Anvil.
 Contracts, backend configuration and deployed full-flow QA remain pending.
 Production CI environment has owner approval/main-only protection; release flag
 is false until verified. See cloud-deployment.md for authoritative live progress.
+
+**7 November deployed testnet update:** confirmed Base Sepolia configuration is
+in ignored `data/nft-sepolia.json`: candy
+`0x29545806dda87005d8e7b8b203f08a7dd45956bb`, marketplace
+`0xb829ac0181ed55beb70e024e137ff4ebb64bd9e0`. V2, expected signer role,
+market linkage and supply 1,000 were verified on-chain. Frontend `d84137c` is
+READY with NFT mode, server-only backend origin and an explicit nested API proxy.
+Public health/candy config/marketplace returned 200; actor streaming and strict
+JSON judge smoke passed. The backend runs the same source release.
+Cloud bundle `data/credentials/codespaces-preview.env` uses the working IPv4
+Supabase Session pooler and separate Bifrost roles. Only API port 8000 is public;
+Codespaces idle/quota still applies. Restart cleanup now signals service process
+groups; event reads respect the public RPC's 200-block limit. Browser automation
+was unavailable, and real cloud wallet play → image → mint → trade → payout still
+needs user verification. Automatic CD is disabled pending scoped CI credentials
+and full QA. Read `docs/qa-cloud-2026-11-07.md` and cloud-deployment.md before
+continuing. These current results supersede the earlier pending-contract notes.
 
 ## Product and reward rules
 
@@ -362,3 +380,271 @@ disclosure and collection search/reset, plus desktop collection presentation.
 Frontend tests (11), type check and production build passed. These presentation
 changes do not resolve or re-verify the earlier payout discrepancy or MetaMask
 extension integration. Development servers remain user-managed.
+
+## Latest image connection checkpoint — 7 November 2026
+
+Backend release `7bd583c` and frontend `eb2ef92` are live. Read
+`docs/image-generation-analysis-2026-11-07.md` before changing reward flow.
+Existing ready artwork was hidden behind a slow mint check; the UI now shows the
+saved image immediately, serializes polls and reports chain trouble separately.
+`nft-bridge.mjs` uses `usedSessions`, immutable token commitments or the receipt
+block for mint status. SSE image responses stop at completion and expose live
+queue/provider/download/save phases; no automatic provider retry or paid fallback.
+Only public content-addressed PNG/JSON responses are cached; their cookies are
+stripped both ways and HTML/error responses are never cached. Accounts stay
+no-store. Original reward hashes/grade/one generation attempt were preserved.
+Real fictional generation took 3.77s; saved-artwork repeat CDN HIT took 0.187s.
+All relevant tests and CI passed. Browser/wallet transaction QA remains manual;
+free GPU quotas and Codespaces sleep have not been eliminated.
+
+## Latest text-provider update — 7 November
+
+Release `938ad4e` is deployed on Vercel/Codespaces. OpenRouter's daily free-model
+quota was exhausted, so the user selected Google AI Studio and supplied a key.
+The key is only in ignored server env files; never print it. Gemini actor
+`gemini-3.1-flash-lite` and independent judge `gemini-3.6-flash` passed streaming,
+full candy-schema validation and a fictional in-memory turn in 3.83s. Distinct
+2.5 fallbacks are configured, model allowlists/budgets/auth preserved, no billing
+setting changed. `bifrost_setup.py use-gemini` performs a backed-up switch and
+requires `CASPY_GEMINI_FREE_TIER_CONFIRMED=true` for the operator's free-project
+choice. Metadata/preflight tests cannot independently verify the project's billing
+status. Gemini still has quotas; Codespaces still sleeps. Hosted images remain
+Schnell, and saved grades/images were not changed. See cloud-deployment.md for
+full live status, privacy note, key rotation and setup commands.
+
+## Wallet persistence checkpoint — 8 November 2026
+
+Backend release `a8cba1d` persists verified wallet sessions in private Supabase
+`wallet_sessions` (token digests only, six-hour absolute expiry, scoped to chain/
+contract/deployment). Startup calls `persist_sessions(platform.database)`.
+Restart recovery, expiry, logout, token rotation, isolation and private-table
+permissions passed isolated and live disposable-schema tests. Account logout
+intentionally revokes the wallet session; email login alone never proves wallet
+ownership. Earlier memory-only proofs cannot be recovered; sign once after this
+release. See `docs/wallet-session-persistence-2026-11-08.md`. Codespaces remains
+a demo with sleep/quota/lifetime limits; no 24/7 claim or keepalive bypass.
+
+## Multiple-reward implementation — 8 November 2026
+
+The user now requests multiple candies per wallet. New v3 seasons allow this,
+one entitlement/mint per winning heist, finite 1,000 supply, no loss reward and
+no rerolls. This supersedes the prior one-per-wallet product requirement.
+Current public v2 contracts remain limited until the user signs new v3 candy
+and marketplace deployments at /deploy-testnet and provides their public JSON.
+The bridge supports both versions with matching EIP-712 domains; the DB migration
+drops only candy_jobs_namespace_wallet_key and retains saved data. Legacy v2
+uses an explicit server wallet gate. Do not wipe old contracts, rewards, signer
+or account data when activating the new season. Old NFTs persist on their old
+contract; the current collection UI is deployment-scoped. PRD amendment records
+this activation boundary.
+
+## v3 activated — 8 November 2026
+
+The user's downloaded v3 configuration was verified against runtime bytecode,
+version, maximum supply, signer role, marketplace linkage and deployment block
+hash. Candy `0x13cc9bb8ede8f77e4552715040555b924558c690`, marketplace
+`0xa6ab784124e952d478d3dd2a2475e1353a934ec5`, block 55968978. Frontend
+Vercel deployment `dpl_8hB76V2v8YtemSdPmX2U4YAdgfXx` READY and backend
+both use source `f90e0c0` and the new public configuration. Live candy/config
+and frontend JS address checks matched; new season initially has zero reserved
+rewards. No player turn, generated image or public-chain transaction was
+created by the activation checks. The active backend now enables multiple
+rewards from distinct eligible heists for one wallet. Real user minting on v3
+remains to be verified.
+
+Old public config is preserved as ignored
+`data/nft-sepolia-v2-before-v3-20261108.json`; private cloud environment backup
+is `data/credentials/codespaces-preview.before-v3-20261108.env` (0600).
+Never print the environment backup. Supabase keeps old rewards/snapshots and
+assets. New session storage key and wallet scope use the new season, so refresh,
+reconnect/sign once, and start a new heist. Old v2 wins do not automatically
+become v3 entitlements, and old NFTs are not shown by the v3-scoped collection.
+Codespaces still sleeps; this change does not provide 24/7 hosting.
+
+## Saved artwork status repair — 8 November 2026
+
+Release f49b8ac is live on Vercel and Codespaces. A ready candy's ensure_win
+serialized its public metadata inside the reward reservation transaction.
+Reading PostgreSQL blobs on a second connection could wait on that same
+transaction's advisory lock. Reservation now exits before serialization; the
+concurrent generate re-read branch also exits before metadata access. A guard
+regression rejects nested transactions. Three cloud storage tests, 12 candy
+tests, the real disposable-Supabase blob fixture, 27 frontend tests, type check,
+build and all four CI jobs passed. Existing user reward status returned ready
+in 0.09s with one generation attempt and unchanged S/91 assessment. No new
+image, heist or mint was created.
+
+Gameplay progress now uses Prepare/Create candy/Save artwork, without model
+names, GPU/setup instructions or seed jargon. Hosted prompt processing remains
+disclosed in an expandable consent detail and privacy notice. Collection no
+longer prints the generator model. Technical provenance stays in immutable
+metadata. The grading rule is unchanged: this S was 16+18+17+40=91; with zero
+earlier prompts, v1 awarded full novelty. This is an uncalibrated rubric, not
+a guaranteed B/S outcome. Do not silently regrade saved or minted awards.
+
+## Confirmed mint warning repair — 8 November 2026
+
+Read-only live checks confirmed the reported v3 candy as token #1: saved game
+and candy job both minted, on-chain owner matches the player's wallet on 84532.
+The /mint/submit tracking request had failed but subsequent status recovery
+confirmed the token; an earlier UI error string remained visible. Frontend
+2009c30 clears busy/error/sync-warning on authoritative mint confirmation,
+including already-persisted minted snapshots, and suppresses stale mint warnings
+on a confirmed reward. Tracking failure does not resubmit a transaction. Two
+regression cases plus all 29 frontend tests, type checks and build passed.
+No replacement mint, image regeneration or grade change was performed.
+
+## Heist history and automatic artwork updates — 8 November 2026
+
+Release f1cd4fe adds /heists, linked from dashboard Recorded heists, View all
+heists, recent activity and Account. Account-owned transcript/outcome/grade/token
+details use GET /account/heists/<id>; ownership is checked before current or
+archived snapshot lookup. Old seasons are read-only; missing snapshots are
+reported, not reconstructed from research samples. History reads do not need
+wallet proof; play/mint/trade still do. The reward page uses serialized 2.5-second
+status checks, bounded error backoff and immediate foreground/online recovery.
+It never automatically generates, rerolls or submits a transaction. Manual
+refresh remains optional. User-facing gateway names were removed. See
+docs/heist-history-live-updates-2026-11-08.md for validation and limits.
+
+Live verification: f1cd4fe is deployed on both services; /heists returns 200
+and unsigned history requests return 401. Frontend bundle contains the new
+history/automatic-reconnect UI and no gateway brand name. All four CI jobs
+passed. Read-only checks of the reported account found five records: four
+saved transcripts available (two current, two older seasons); one legacy
+record has no snapshot and correctly returns an unavailable-history message.
+No conversation text or token was printed, and no new heist/image/mint was
+created by verification.
+
+## Migrated wallet index correction — 8 November 2026
+
+Live catalog inspection found candy_jobs_migrated_0, a standalone unique
+(namespace,wallet) index from the SQLite migration, still blocking v3 rewards.
+The earlier native-constraint-only migration was incomplete. Release e54608a
+identifies and removes only exact namespace/wallet unique keys, handling both
+standalone and constraint forms. The heist PK, other indexes and saved records
+remain intact. A real disposable-Supabase regression with both forms passed,
+as did 12 candy-store cases. Unexpected integrity errors now report temporary
+reservation failure rather than falsely claiming an existing heist reward.
+See docs/reward-index-repair-2026-11-08.md.
+
+Live e54608a verification: obsolete migrated index absent, heist PK present;
+all four CI jobs passed and public API healthy. The reported account's saved,
+clean winning heist was recovered through ensure_win using its persisted judge
+verdict, account/wallet link and existing v3 namespace. New reward is earned
+with zero image requests. A before/after comparison verified all prior reward
+rows unchanged. No conversation rerun, image generation or mint transaction.
+
+## Profile/loading checkpoint — 8 November 2026
+
+Profile page uses ProfilePanel/UserAvatar and private profiles table (RLS).
+/account/avatar accepts token_id or null, checks account/wallet link, on-chain
+ownership and committed image; it does not transact. Account metadata includes
+avatar URL/chain/contract/token; pictures are cosmetic, not ownership proof.
+Common LoadingState supplies labelled waits, slow-response hints, skeletons and
+reduced-motion support across account/dashboard/history/research/catalog/reward/
+collection, with video buffering and source-prompt progress. ApiError preserves
+HTTP status; temporary connection failures no longer masquerade as sign-out.
+Background dashboard data stays visible. Read docs/loading-profile-review-2026-11-08.md
+for test results, selection-time ownership semantics and missing browser QA.
+
+## Loading/profile implementation — 8 November 2026
+
+Release 342e66e implements the profile/loading amendment. Backend was restarted
+only after confirming zero in-flight turns and zero running image jobs. New
+profiles table persists verified, account-owned NFT picture selection; no real
+user avatar was selected by QA. Shared loading, background-preservation and
+offline-versus-expired handling were reviewed across the app. See
+docs/loading-profile-review-2026-11-08.md for tested scenarios and explicit
+browser unavailability. Do not claim visual browser sign-off.
+
+## Social friends — 8 November 2026
+
+Players add friends with a private friend code (`XXXX-XXXX`, unambiguous alphabet,
+stable per account, regenerable). There is deliberately **no name/email search**,
+so accounts cannot be enumerated; keep it that way. Code is
+`scripts/social_store.py` (routes `/social...`, dispatched by `Platform.handle`,
+which gained the `/social` prefix), frontend `Social.tsx`, `lib/social.ts`,
+`styles/social.css`, nav link for signed-in users, `social` in `[page].astro` and
+`protectedPage`. Tables `friend_codes` and `friendships` are created at startup;
+on PostgreSQL they have RLS enabled and access revoked from PUBLIC/anon/authenticated.
+Responses expose only an opaque friendship ID, name, picture URL and a timestamp,
+never email, user ID, wallet or role. Limits: 200 friends, 50 pending outgoing,
+10 unknown-code lookups per 10 minutes (reuses `login_attempts`; the failed lookup
+is committed before the 404 is raised, so do not move the raise back inside that
+transaction). Declined requests hide from both sides and cannot be resent by the
+sender; the decliner may still invite them. A friendship grants nothing: no access
+to heists, wallets, collections or research data, and no effect on attempts,
+grades or rewards. Not built: blocking/reporting, notifications, messaging.
+
+Tests: `scripts/test_social.py` (7), a live disposable-schema class
+`SupabaseSocialTests` in `test_supabase.py` (8, includes table privilege checks)
+and `frontend/src/lib/social.test.ts` (4). All passed on 8 November with the type
+check, build and four CI jobs. No browser walkthrough was available. Merged to
+`main`; **not deployed** to the live preview when written (live was `342e66e`).
+Deploying it needs a Codespace update plus a Vercel redeploy; see below.
+
+## Main merge, protection and release state — 8 November 2026
+
+PR #1 was merged into `main` as `d298c48` (merge commit, CI green). Further changes
+to `main` need a pull request. Protection on `main`: PR required with zero approvals,
+the four CI checks required (Frontend checks, API and authentication checks,
+Contracts and NFT integration, Cloud container build), force-push and deletion
+blocked, administrators may bypass. `codex/cloud-preview-20261106` blocks
+force-push and deletion only. The merge ran the release workflow's checks but did
+not deploy: `CASPY_CLOUD_RELEASE_ENABLED` is still `false`. The `production`
+environment had no `VERCEL_TOKEN`; `CODESPACES_TOKEN` was not confirmed. Do not
+enable release until the full deployed wallet-to-payout run passes; the seller
+payout discrepancy is still unresolved. Do not create or print deployment tokens;
+ask the owner to add them.
+
+## Preview outage and recovery — 8 November 2026
+
+The Vercel proxy returned 502 because the Codespace was running but no process
+listened on port 8000, and the port had reverted to private. Recovery that worked:
+in the Codespace terminal run, as **one line**,
+`.venv/bin/python scripts/codespace_release.py "$(git rev-parse HEAD)"` (two pasted
+lines had merged into one command earlier and nothing ran), wait for the exact-release
+ready message, then if the address returns 401 run
+`gh codespace ports visibility 8000:public --codespace caspy-nft-demo-jjw5666x9jjvfqxg6`.
+Verify `/api/health` through the Vercel URL. The helper restarts the same checked-out
+commit, so it does not deploy new code. The Codespace had local changes (`*` after
+the commit); do not `git pull`, reset or discard them without the owner's approval,
+since they may be private environment files. A restart or port change must wait
+for zero in-flight turns and image jobs. Demo hosting still sleeps after 30 minutes
+idle and is not 24/7; never claim otherwise or add a keepalive.
+
+## README, tooling and agent notes — 8 November 2026
+
+- README was rewritten to match this guide and the PRD (banner, labelled screenshots,
+  video poster linking the repository mp4, Mermaid architecture, accurate stack and
+  limits). Assets in `docs/assets/readme/` are generated by
+  `scripts/build_readme_assets.py` from tracked artwork; the screenshots use
+  fictional tutorial data, so keep their label and never present them as a real win.
+- `scripts/shell/deploy-status.sh` is a read-only status report (git vs origin, CI
+  runs, release switch, whether deploy secrets exist, live backend/frontend commit).
+  `.kiro/hooks/python-syntax-on-save.json` compiles saved `scripts/*.py` files.
+- Vercel and read-only Supabase MCP entries were proposed for the user-level
+  `~/.kiro/settings/mcp.json`, but writing that file is blocked by a permission
+  rule; give the owner the snippet rather than working around the block. Supabase
+  MCP must stay read-only and project-scoped, and the app's admin database URL must
+  never be given to an MCP server.
+- Shell quirks: zsh treats `[...]` in unquoted `gh api` fields as globs (quote them);
+  `gh codespace ssh` hung in this environment, so use short separate commands with
+  explicit timeouts and ask the owner to run Codespace commands in its terminal.
+- An unpushed local commit `c30bd42 "update 08/11/2026"` holds the hook, the status
+  script, docs and this steering file, plus two stray root files named `200` and
+  `300` that look accidental. Remove those two before pushing, and use a pull request
+  because `main` is protected.
+
+## Pending follow-ups — 8 November 2026
+
+1. Deploy Social: update the Codespace (resolve its local changes with the owner),
+   restart with the release helper, make port 8000 public, redeploy the Vercel
+   frontend, then verify health, `/social` and a fictional two-account flow.
+2. Open a pull request for the unpushed local commit after removing `200`/`300`.
+3. Add `VERCEL_TOKEN` and `CODESPACES_TOKEN` only when the owner is ready, finish the
+   full deployed QA, verify seller payout, then consider enabling release.
+4. Browser/mobile QA of Social, the new README rendering on GitHub, loading states
+   and profile pictures; MetaMask extension flow is still untested.
+5. Move the backend to an always-on host once a payment method is available.

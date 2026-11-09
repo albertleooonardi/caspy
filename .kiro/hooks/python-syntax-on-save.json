@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Python syntax check on save",
+      "trigger": "PostFileSave",
+      "description": "Compiles a saved backend Python file to catch syntax errors immediately. Read-only; deploys nothing.",
+      "matcher": "scripts/[^/]+\\.py$",
+      "action": {
+        "type": "command",
+        "command": "f=$(python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get(\"file_path\") or d.get(\"path\") or d.get(\"filePath\") or \"\")' 2>/dev/null); [ -n \"$f\" ] && python3 -m py_compile \"$f\" && echo \"syntax ok: $f\"; true",
+        "timeout": 20
+      }
+    }
+  ]
+}

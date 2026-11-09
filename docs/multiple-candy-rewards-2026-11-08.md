@@ -38,3 +38,26 @@ UI is contract-scoped; switching to v3 will not automatically show v2 tokens or
 move old listings. Preserve the old public config and database namespace for
 recovery. Migrating old winning heists or aggregating old collections is separate
 work and must not silently generate duplicate entitlements.
+
+## v3 activated — 8 November 2026
+
+The user's downloaded v3 configuration was verified against runtime bytecode,
+version, maximum supply, signer role, marketplace linkage and deployment block
+hash. Candy `0x13cc9bb8ede8f77e4552715040555b924558c690`, marketplace
+`0xa6ab784124e952d478d3dd2a2475e1353a934ec5`, block 55968978. Frontend
+Vercel deployment `dpl_8hB76V2v8YtemSdPmX2U4YAdgfXx` READY and backend
+both use source `f90e0c0` and the new public configuration. Live candy/config
+and frontend JS address checks matched; new season initially has zero reserved
+rewards. No player turn, generated image or public-chain transaction was
+created by the activation checks. The active backend now enables multiple
+rewards from distinct eligible heists for one wallet. Real user minting on v3
+remains to be verified.
+
+Old public config is preserved as ignored
+`data/nft-sepolia-v2-before-v3-20261108.json`; private cloud environment backup
+is `data/credentials/codespaces-preview.before-v3-20261108.env` (0600).
+Never print the environment backup. Supabase keeps old rewards/snapshots and
+assets. New session storage key and wallet scope use the new season, so refresh,
+reconnect/sign once, and start a new heist. Old v2 wins do not automatically
+become v3 entitlements, and old NFTs are not shown by the v3-scoped collection.
+Codespaces still sleeps; this change does not provide 24/7 hosting.
