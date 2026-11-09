@@ -9,6 +9,13 @@
 .user-avatar { display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #eee3f5; color: #80589a; flex-shrink: 0; overflow: hidden; border: 2px solid #e0d0e9; }
 .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .account-link:has(.user-avatar) { display: inline-flex; align-items: center; gap: 10px; }
+/* The name truncates with an ellipsis instead of being clipped mid-word. */
+.account-link .account-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Phones: the avatar alone identifies the account; the full name stays in the link's accessible label. */
+@media (max-width: 520px) {
+  .header-actions .account-link:has(.user-avatar) { max-width: none; gap: 0; }
+  .header-actions .account-link .account-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+}
 @media(prefers-reduced-motion:reduce) { .loading-skeleton i { animation: none; } }
 
 .video-buffering { position: absolute; left: 16px; right: 16px; bottom: 46px; z-index: 3; pointer-events: none; }

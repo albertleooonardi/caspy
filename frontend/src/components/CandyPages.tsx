@@ -122,6 +122,9 @@ export function CandyMarket({ collection, wallet, openWallet }: { collection: bo
   const [config, setConfig] = useState<Config | null>(null);
   const [proceeds, setProceeds] = useState('0');
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState('');
+  // Load failures are tracked apart from action errors so a later successful load can clear them
+  // without hiding, for example, a failed purchase message.
+  const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(true), [refreshing, setRefreshing] = useState(false);
   const [price, setPrice] = useState<Record<string, string>>({});
   const [consent, setConsent] = useState<Record<string, boolean>>({});
@@ -132,7 +135,7 @@ export function CandyMarket({ collection, wallet, openWallet }: { collection: bo
     const sequence = ++loadSequence.current;
     const cfg = await request<Config>('/candy/config');
     if (!cfg.enabled || (collection && !wallet)) {
-      if (sequence === loadSequence.current) { setConfig(cfg); setTokens([]); setProceeds('0'); }
+      if (sequence === loadSequence.current) { setConfig(cfg); setTokens([]); setProceeds('0'); setLoadError(''); }
       return;
     }
     const [result, balance] = await Promise.all([
@@ -140,19 +143,19 @@ export function CandyMarket({ collection, wallet, openWallet }: { collection: bo
       wallet ? request<{ proceeds_wei: string }>('/market/account') : Promise.resolve({ proceeds_wei: '0' }),
     ]);
     if (sequence !== loadSequence.current) return;
-    setConfig(cfg); setTokens(result.tokens || result.listings || []); setProceeds(balance.proceeds_wei);
+    setConfig(cfg); setTokens(result.tokens || result.listings || []); setProceeds(balance.proceeds_wei); setLoadError('');
   }
   useEffect(() => {
     let active = true; setLoading(true); setTokens([]); setPrompts({}); setProceeds('0');
-    load().catch(e => active && setError(message(e))).finally(() => active && setLoading(false));
-    const sync = () => { if (document.visibilityState === 'visible') void load().catch(e => active && setError(message(e))); };
+    load().catch(e => active && setLoadError(message(e))).finally(() => active && setLoading(false));
+    const sync = () => { if (document.visibilityState === 'visible') void load().catch(e => active && setLoadError(message(e))); };
     window.addEventListener('focus', sync); document.addEventListener('visibilitychange', sync);
     return () => { active = false; loadSequence.current += 1; window.removeEventListener('focus', sync); document.removeEventListener('visibilitychange', sync); };
   }, [wallet, collection]);
   async function refresh() {
     setRefreshing(true); setError('');
     try { await load(); }
-    catch (e) { setError(message(e)); } finally { setRefreshing(false); }
+    catch (e) { setLoadError(message(e)); } finally { setRefreshing(false); }
   }
   async function reveal(token: Token) {
     if (prompts[token.token_id]) { setPrompts(previous => { const next = { ...previous }; delete next[token.token_id]; return next; }); return; }
@@ -182,16 +185,16 @@ export function CandyMarket({ collection, wallet, openWallet }: { collection: bo
   }), [tokens, query, grade, sort]);
   const filtered = !!query || grade !== 'all';
   return <div className="candy-page shell">
-    <div className="page-topline"><span className="mini-tag"><span className="network-dot" /> Local test network · Test ETH only</span><a href={collection ? '/marketplace' : '/collection'} className="inline-link">{collection ? 'Browse marketplace' : 'Your collection'} <ArrowUpRight size={16} /></a></div>
+    <div className="page-topline"><span className="mini-tag"><span className="network-dot" /> {LOCAL_TEST_WALLET ? 'Local test network' : `${CANDY_NETWORK} testnet`} · Test ETH only</span><a href={collection ? '/marketplace' : '/collection'} className="inline-link">{collection ? 'Browse marketplace' : 'Your collection'} <ArrowUpRight size={16} /></a></div>
     <div className="market-heading"><div><span className="eyebrow">{collection ? 'EARNED THROUGH IMAGINATION' : 'THE MIDNIGHT MARKET'}</span><h1>{collection ? 'Your candy cabinet' : 'A little candy. A lot of character'}<span className="orange-text">.</span></h1><p className="candy-lead">{collection ? 'Your earned and collected candies, with the stories that made them.' : 'Discover prompt-inspired candy. Each one carries an earned grade and a story that unlocks for its owner.'}</p></div><button className="button button-light refresh-control" onClick={() => void refresh()} disabled={refreshing || loading || !!busy}><RotateCw size={16} className={refreshing ? 'spin' : ''} />{refreshing ? 'Refreshing…' : 'Refresh'}</button></div>
     {config?.enabled && <div className="market-overview"><span><b>{loading ? '—' : tokens.length}</b>{collection ? 'In this wallet' : 'Listed candies'}</span><span><b>{config.remaining.toLocaleString()}</b>Rewards remaining</span><span><b>{config.max_supply.toLocaleString()}</b>Collection limit</span><p><ShieldCheck size={17} /> Every candy starts with a winning story.</p></div>}
-    <Notice error={error} />
+    <Notice error={error || (loadError && tokens.length ? `${loadError} Showing the last loaded results.` : '')} />
     {notice && <div className="platform-success transaction-notice" role="status"><CheckCircle2 size={20} /><span>{notice}{notice.startsWith('Purchase') && <a href="/collection">Open collection <ArrowRight size={15} /></a>}</span></div>}
     {busy && <div className="transaction-progress" role="status" aria-live="polite"><LoaderCircle className="spin" size={20} /><div><b>{busy.startsWith('withdraw') ? 'Confirming your withdrawal' : busy.startsWith('list:') ? 'Preparing your listing' : busy.startsWith('buy:') ? 'Confirming your purchase' : 'Cancelling your listing'}</b><p>Wait for {CANDY_NETWORK} confirmation. Your balance and ownership will refresh when it finishes.</p></div></div>}
     {proceeds !== '0' && <section className="proceeds-panel" aria-label="Seller proceeds"><div><span className="eyebrow">READY TO WITHDRAW</span><h2>{formatEther(BigInt(proceeds))} <small>test ETH</small></h2><p>Completed sales credit your wallet here. Withdraw to receive the funds.</p></div><button className="button button-primary" disabled={!!busy} onClick={() => void action('withdraw')}>{busy.startsWith('withdraw') ? <><LoaderCircle className="spin" size={17} />Confirming withdrawal…</> : 'Withdraw proceeds'}</button></section>}
     {!IS_NFT_ENABLED || config?.enabled === false ? <div className="platform-empty"><Ghost /><h2>The candy chain is resting.</h2><p>Start the full app with ./run.sh to use local collectibles.</p></div> : loading ? <LoadingState title={collection ? 'Loading your candy collection…' : 'Loading marketplace listings…'} detail="Checking ownership, prices and saved artwork."/> : collection && !wallet ? <div className="platform-empty"><Ghost size={40} /><h2>{LOCAL_TEST_WALLET ? 'Choose your test wallet.' : 'Connect your browser wallet.'}</h2><p>Your collection follows the wallet that earned or bought each candy.</p><button className="button button-primary" onClick={openWallet}>{LOCAL_TEST_WALLET ? 'Choose test wallet' : 'Connect wallet'}</button></div> : <>
       {!!tokens.length && <div className="market-toolbar"><label className="market-search"><span>Find a candy</span><span><Search size={17} /><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Name or candy number" /></span></label><label>Grade<select value={grade} onChange={event => setGrade(event.target.value)}><option value="all">All grades</option>{['C', 'B', 'A', 'S'].map((label, index) => <option key={label} value={index + 1}>Grade {label}</option>)}</select></label><label>Sort by<select value={sort} onChange={event => setSort(event.target.value)}><option value="newest">Newest candy</option>{!collection && <><option value="low">Price: low to high</option><option value="high">Price: high to low</option></>}</select></label><span className="market-count" role="status">{visible.length} {visible.length === 1 ? 'candy' : 'candies'}</span></div>}
-      {!visible.length && <div className="platform-empty"><Candy size={46} /><h2>{filtered ? 'No candies match those filters.' : collection ? 'No candies in this wallet yet.' : 'The next sweet story could be yours.'}</h2><p>{filtered ? 'Try another name, candy number or grade.' : collection ? 'Win a heist to create your own, or collect one from the marketplace.' : 'No candies are listed right now. Win a heist, create its artwork and mint before listing.'}</p>{filtered ? <button className="button button-light" onClick={() => { setQuery(''); setGrade('all'); }}>Clear filters</button> : <div className="platform-actions"><a className="button button-primary" href="/play">Start a heist <ArrowRight size={16} /></a>{collection && <a className="button button-light" href="/marketplace">Explore marketplace</a>}</div>}</div>}
+      {loadError && !tokens.length ? <div className="platform-empty" role="alert"><Ghost size={40} /><h2>{collection ? 'Your collection couldn’t load.' : 'Listings couldn’t load.'}</h2><p>{loadError} We couldn’t check {collection ? 'your candies' : 'the marketplace'}, so this doesn’t mean {collection ? 'your wallet is empty' : 'nothing is listed'}.</p><button className="button button-primary" onClick={() => void refresh()} disabled={refreshing}><RotateCw size={16} className={refreshing ? 'spin' : ''} />{refreshing ? 'Trying again…' : 'Try again'}</button></div> : !visible.length && <div className="platform-empty"><Candy size={46} /><h2>{filtered ? 'No candies match those filters.' : collection ? 'No candies in this wallet yet.' : 'The next sweet story could be yours.'}</h2><p>{filtered ? 'Try another name, candy number or grade.' : collection ? 'Win a heist to create your own, or collect one from the marketplace.' : 'No candies are listed right now. Win a heist, create its artwork and mint before listing.'}</p>{filtered ? <button className="button button-light" onClick={() => { setQuery(''); setGrade('all'); }}>Clear filters</button> : <div className="platform-actions"><a className="button button-primary" href="/play">Start a heist <ArrowRight size={16} /></a>{collection && <a className="button button-light" href="/marketplace">Explore marketplace</a>}</div>}</div>}
       <div className={collection ? "candy-grid" : "market-board"}>{visible.map(token => {
         const mine = token.owner.toLowerCase() === wallet.toLowerCase() || (token.listing?.seller || token.seller)?.toLowerCase() === wallet.toLowerCase();
         const listed = !!token.listing || !!token.listing_id;
@@ -210,6 +213,6 @@ export function CandyMarket({ collection, wallet, openWallet }: { collection: bo
         return <article className="candy-token" data-grade={token.grade} key={token.token_id}><div className="candy-collectible"><div className="candy-card-banner"><span className="candy-card-grade"><b>{['', 'C', 'B', 'A', 'S'][token.grade]}</b><span>GRADE</span></span><span className="candy-card-edition">CASPY’S CANDY COLLECTION<strong>#{token.token_id}</strong></span><span className="candy-card-score">{token.score}<small>/ 100</small></span></div><div className="candy-token-art">{token.image_url ? <img loading="lazy" src={token.image_url} alt={candyDisplayName(token)} /> : <Candy size={70} />}</div><div className="candy-card-title"><span>✦ {mine ? 'YOUR COLLECTION' : 'CASPY ORIGINAL'} ✦</span><h2>{candyDisplayName(token)}</h2></div></div><div className="candy-token-copy"><small>Prompt-earned · {CANDY_NETWORK}</small>{listed && <p className="candy-price">{formatEther(tokenPrice(token))} <span>test ETH</span></p>}{mine ? <><button className="button button-light" onClick={() => void reveal(token)}>{prompts[token.token_id] ? 'Hide source prompt' : 'Read source prompt'}</button>{prompts[token.token_id] && <blockquote className="candy-prompt">{prompts[token.token_id]}</blockquote>}{listed ? <button className="button button-light" disabled={!!busy} onClick={() => void action('cancel', token)}>Cancel listing</button> : <details className="listing-details"><summary>List this candy <ArrowUpRight size={16} /></summary><div className="platform-form"><label>Fixed price in test ETH<input inputMode="decimal" value={price[token.token_id] || ''} placeholder="0.01" onChange={event => setPrice(previous => ({ ...previous, [token.token_id]: event.target.value }))} /></label><label className="candy-consent"><input type="checkbox" checked={!!consent[token.token_id]} onChange={event => setConsent(previous => ({ ...previous, [token.token_id]: event.target.checked }))} /> I agree to escrow this NFT and provide its redacted source prompt under {token.prompt_license ? 'the existing immutable license' : 'the license below'}.</label><details><summary>Read source-prompt license</summary><p>{token.prompt_license || PROMPT_LICENSE}</p></details><button className="button button-primary" disabled={!!busy || !consent[token.token_id] || !price[token.token_id]} onClick={() => void action('list', token)}>License, approve & list</button></div></details>}</> : <><p>The redacted source prompt unlocks after purchase. NFT ownership does not transfer copyright.</p><details><summary>Read source-prompt license</summary><p>{token.prompt_license}</p></details><button className="button button-primary" disabled={!!busy} onClick={() => void action('buy', token)}>{wallet ? 'Buy with test ETH' : 'Choose a wallet to collect'}</button></>}</div></article>;
       })}</div>
     </>}
-    <p className="candy-footnote">Local test collectibles have no promised monetary value. Prompt access follows the current NFT owner; previously delivered copies cannot be recalled. Research licensing is a separate choice.</p>
+    <p className="candy-footnote">{LOCAL_TEST_WALLET ? 'Local test collectibles' : `${CANDY_NETWORK} test collectibles`} have no promised monetary value. Prompt access follows the current NFT owner; previously delivered copies cannot be recalled. Research licensing is a separate choice.</p>
   </div>;
 }
