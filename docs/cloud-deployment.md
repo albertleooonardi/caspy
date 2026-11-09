@@ -34,9 +34,36 @@ until full deployed-game QA passes. Never print tokens or copy them into source.
 
 The private backend environment is prepared in ignored
 `data/credentials/render-preview.env` (0600; historical filename). The confirmed
-contract JSON is still pending. This file is server-only, never a frontend env
+contract JSON is now saved; use the current Codespaces bundle described below. This file is server-only, never a frontend env
 or CI artifact. Regenerate its contract setting after wallet deployment; a
 Codespace uses port 8000 and its workspace path rather than Docker's `/app`.
+
+**7 November deployed checkpoint:** the full-feature testnet preview is configured
+at https://caspy-prompt-heist.vercel.app. Frontend release `d84137c` is READY;
+backend is running the same exact commit. Public proxy checks returned
+200 for health (Base Sepolia, minting enabled), candy configuration and marketplace
+listings. Both live gateway checks passed: actor stream and independent strict
+JSON judge. This is an available testnet preview, not completed browser/wallet
+end-to-end QA. See `docs/qa-cloud-2026-11-07.md` for evidence and remaining checks.
+
+- Candy: `0x29545806dda87005d8e7b8b203f08a7dd45956bb`.
+- Marketplace: `0xb829ac0181ed55beb70e024e137ff4ebb64bd9e0`.
+- Voucher signer: `0x0151Fefd570E611d40cA9bEa78aF50068C11B097` (public address).
+- Confirmed configuration is in ignored `data/nft-sepolia.json`. Read-only RPC
+  verified v2, signer role, marketplace linkage, maximum supply 1,000 and zero
+  minted at initial verification. Never redeploy these contracts merely to
+  restart the backend.
+- The current private bundle is `data/credentials/codespaces-preview.env`.
+  It preserves the verified IPv4 Supabase **Session pooler on port 5432** and
+  separate Bifrost database roles. Do not regenerate it from the historical
+  direct-connection Render bundle.
+- Codespaces API port 8000 is public; Bifrost 8080 and Anvil 8545 are not forwarded.
+  Codespaces can idle/stop within quota; the service is not always-on hosting.
+- Fixed actual deployment issues: 200-block public RPC event limit (paginated
+  reads), orphan Bifrost child processes on restart (service process groups),
+  and Vercel nested API routing/wildcard query metadata (explicit proxy rewrite).
+- Automatic release remains disabled, protected main-only environment retained;
+  scoped `CODESPACES_TOKEN` and `VERCEL_TOKEN` still need owner configuration.
 
 The original Render plan and its configuration below remain as a documented
 fallback if billing becomes available, not the currently selected backend.
@@ -165,3 +192,153 @@ mint → list → buyer purchase → seller payout test passes on the deployed s
 An initial setup preview is not the full-game launch. Account email verification,
 recovery, managed signing, abuse protection, distributed jobs and independent
 contract/security review remain production work.
+
+## Recovering after Codespaces stops
+
+An observed 7 November outage left Vercel's static frontend online while its API
+proxy returned 502: the running Codespace had no API process and port 8000 had
+reverted to private, redirecting Vercel to GitHub authentication. The configured
+Codespaces idle timeout is 30 minutes; restarting the editor alone does not start
+the backend. This demo is not always-on hosting.
+
+After starting the existing Codespace, in its project terminal run:
+
+```sh
+.venv/bin/python scripts/codespace_release.py "$(git rev-parse HEAD)"
+```
+
+Wait for the exact-release readiness message, then make **only port 8000 public**
+in the Ports tab. Keep 8080 and 8545 unforwarded. Do not re-deploy the contracts,
+regenerate the signer or reset Supabase. From the local authenticated GitHub CLI,
+the port command is `gh codespace ports visibility 8000:public --codespace caspy-nft-demo-jjw5666x9jjvfqxg6`.
+
+Backend release `eaedfd3` replaces historical event scans for active listings and
+collection ownership with current contract storage reads. Direct public-chain
+market/collection reads completed in under one second during verification;
+three disposable local-chain mint/trading integration tests passed (live-AI test
+intentionally skipped). Historical sales/status event queries still use range
+pagination. Frontend remains on its independent chat release `b846244`.
+
+## Image/reward recovery release — 7 November
+
+Backend `7bd583c`, frontend `eb2ef92` (Vercel deployment
+`dpl_Df7dbjwen2kXixNmbgX849kBsypj`) are deployed and healthy. The result page
+publishes ready artwork before checking mint status, serializes polling, shows
+real generation phases and supports saved-image reload. Mint checks use storage
+or one receipt block rather than deployment-age event scans. The Space parser
+stops on SSE completion instead of EOF. Public hash-addressed PNG/JSON assets are
+cached without account/tunnel cookies; private API responses remain no-store.
+A fictional real cloud image generated in 3.77s; original saved-artwork CDN HIT
+was 0.187s. Provider queues and Codespaces sleep remain operational limitations.
+Full findings and test evidence: `docs/image-generation-analysis-2026-11-07.md`.
+Do not regenerate existing ready rewards when troubleshooting a display failure.
+
+## Gemini text-provider checkpoint — 7 November 2026
+
+Release `938ad4e7f805b3a10f6f16f6e124e4133e72b9ea` is deployed on Vercel
+(`dpl_GZTyidJn1JkX4L7pNn7BVzGx5zMh`) and Codespaces. Both health/source checks
+passed; all four CI jobs passed (run 42386166642). OpenRouter had returned HTTP
+429 `free-models-per-day`; Gemini is now the configured text provider.
+
+- Actor: `gemini/gemini-3.1-flash-lite`; fallback `gemini/gemini-2.5-flash-lite`.
+- Judge: `gemini/gemini-3.6-flash`; fallback `gemini/gemini-2.5-flash`.
+- Gemini primary streaming and strict JSON smoke passed. An in-memory fictional
+  turn through the actual actor and full candy judge schema completed in 3.83s;
+  served model IDs matched both primaries, with creativity/coherence/specificity
+  validated. No player attempt, persisted game, reward or transaction was created.
+- Native credential/model preflight succeeded; actor text took 0.97s and judge
+  structured JSON 1.85s. These are individual observations, not guaranteed latency.
+- Explicit Gemini text-model allowlists preserve distinct actor/judge models,
+  virtual keys, rate limits, shared budgets and separate database roles. The
+  `use-gemini` command backs up existing config before switching; default example
+  remains OpenRouter for existing installations.
+- `GEMINI_API_KEY` is server-only in ignored root/cloud environments. Never copy
+  it into Vercel public variables, source or a report. The user provided the key
+  for a requested free-tier project; `CASPY_GEMINI_FREE_TIER_CONFIRMED=true` records
+  that choice. No billing setting was changed. The flag is an operator assertion,
+  not an API-based verification of Google's billing account.
+- Configure an eligible free-tier project without billing, add the key privately,
+  then run `python3 scripts/bifrost_setup.py use-gemini` before restarting. Local
+  development servers remain user-started. Cloud deploy uses the existing reviewed
+  Codespace release helper, then only API port 8000 becomes public after health.
+- Request reasoning uses Gemini's minimal effort mapping. Hosted image generation
+  remains FLUX.1-schnell; no image/paid/tool models were added to the Gemini routes.
+- The privacy page describes hosted Google free-tier processing separately from
+  optional Caspy research sharing. Google free quotas and Codespaces idle limits
+  remain; they are not bypassed. Quota errors now explain the limit and preserve
+  an unstarted reply's attempt.
+- The supplied key appeared in chat: rotate it, save its replacement privately in
+  `.env`, and update the cloud bundle before retiring the old deployed credential.
+
+Provider references: https://docs.getbifrost.ai/providers/supported-providers/gemini,
+https://ai.google.dev/gemini-api/docs/pricing,
+https://ai.google.dev/gemini-api/docs/rate-limits.
+
+## v3 activated — 8 November 2026
+
+The user's downloaded v3 configuration was verified against runtime bytecode,
+version, maximum supply, signer role, marketplace linkage and deployment block
+hash. Candy `0x13cc9bb8ede8f77e4552715040555b924558c690`, marketplace
+`0xa6ab784124e952d478d3dd2a2475e1353a934ec5`, block 55968978. Frontend
+Vercel deployment `dpl_8hB76V2v8YtemSdPmX2U4YAdgfXx` READY and backend
+both use source `f90e0c0` and the new public configuration. Live candy/config
+and frontend JS address checks matched; new season initially has zero reserved
+rewards. No player turn, generated image or public-chain transaction was
+created by the activation checks. The active backend now enables multiple
+rewards from distinct eligible heists for one wallet. Real user minting on v3
+remains to be verified.
+
+Old public config is preserved as ignored
+`data/nft-sepolia-v2-before-v3-20261108.json`; private cloud environment backup
+is `data/credentials/codespaces-preview.before-v3-20261108.env` (0600).
+Never print the environment backup. Supabase keeps old rewards/snapshots and
+assets. New session storage key and wallet scope use the new season, so refresh,
+reconnect/sign once, and start a new heist. Old v2 wins do not automatically
+become v3 entitlements, and old NFTs are not shown by the v3-scoped collection.
+Codespaces still sleeps; this change does not provide 24/7 hosting.
+
+## Saved artwork status repair — 8 November 2026
+
+Release f49b8ac is live on Vercel and Codespaces. A ready candy's ensure_win
+serialized its public metadata inside the reward reservation transaction.
+Reading PostgreSQL blobs on a second connection could wait on that same
+transaction's advisory lock. Reservation now exits before serialization; the
+concurrent generate re-read branch also exits before metadata access. A guard
+regression rejects nested transactions. Three cloud storage tests, 12 candy
+tests, the real disposable-Supabase blob fixture, 27 frontend tests, type check,
+build and all four CI jobs passed. Existing user reward status returned ready
+in 0.09s with one generation attempt and unchanged S/91 assessment. No new
+image, heist or mint was created.
+
+Gameplay progress now uses Prepare/Create candy/Save artwork, without model
+names, GPU/setup instructions or seed jargon. Hosted prompt processing remains
+disclosed in an expandable consent detail and privacy notice. Collection no
+longer prints the generator model. Technical provenance stays in immutable
+metadata. The grading rule is unchanged: this S was 16+18+17+40=91; with zero
+earlier prompts, v1 awarded full novelty. This is an uncalibrated rubric, not
+a guaranteed B/S outcome. Do not silently regrade saved or minted awards.
+
+## Heist history and automatic artwork updates — 8 November 2026
+
+Release f1cd4fe adds /heists, linked from dashboard Recorded heists, View all
+heists, recent activity and Account. Account-owned transcript/outcome/grade/token
+details use GET /account/heists/<id>; ownership is checked before current or
+archived snapshot lookup. Old seasons are read-only; missing snapshots are
+reported, not reconstructed from research samples. History reads do not need
+wallet proof; play/mint/trade still do. The reward page uses serialized 2.5-second
+status checks, bounded error backoff and immediate foreground/online recovery.
+It never automatically generates, rerolls or submits a transaction. Manual
+refresh remains optional. User-facing gateway names were removed. See
+docs/heist-history-live-updates-2026-11-08.md for validation and limits.
+
+## Migrated wallet index correction — 8 November 2026
+
+Live catalog inspection found candy_jobs_migrated_0, a standalone unique
+(namespace,wallet) index from the SQLite migration, still blocking v3 rewards.
+The earlier native-constraint-only migration was incomplete. Release e54608a
+identifies and removes only exact namespace/wallet unique keys, handling both
+standalone and constraint forms. The heist PK, other indexes and saved records
+remain intact. A real disposable-Supabase regression with both forms passed,
+as did 12 candy-store cases. Unexpected integrity errors now report temporary
+reservation failure rather than falsely claiming an existing heist reward.
+See docs/reward-index-repair-2026-11-08.md.

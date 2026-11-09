@@ -3,15 +3,17 @@
 
 | Field   | Value                                |
 | ------- | ------------------------------------ |
-| Version | 1.6 (personal dashboard, contributor replay and marketplace board)               |
-| Status  | Local MVP implemented; public-launch requirements remain         |
-| Date    | 2026-11-06                           |
+| Version | 1.7 (Social friends, v3 multi-reward season, heist history, profile pictures and delivery status)               |
+| Status  | Local MVP implemented; Base Sepolia testnet preview with a demo backend; public-launch requirements remain         |
+| Date    | 2026-11-08                           |
 | Owner   | TBD                                  |
 | Type    | AI evaluation platform with an optional NFT game |
 
 ---
 
 > **Checkpoint: 6 November 2026.** Sections 20–22 describe the implemented local MVP and its validation limits. There is no failure NFT or random rarity draw. Production requirements elsewhere (managed Postgres/Redis, KMS, edge protection, public networks, n8n, scale targets and audits) are roadmap items unless explicitly marked implemented. Section 22 is the authoritative status and operations summary.
+
+> **Amendments: 8 November 2026.** The dated amendments at the end of this document record later work: the v3 multiple-reward season, profile pictures and loading behavior, **Social friends** (section 5.6) and the delivery, branch-protection and operations state. Where they differ from earlier text, the later amendment applies. None of them establishes public-mainnet readiness.
 
 ## 1. Summary
 
@@ -111,6 +113,16 @@ AI-only mode skips wallets, image rewards and NFT minting. The scripted frontend
 - FR-P2: Collection shows earned/owned candies. The local marketplace supports explicit fixed-price escrow listing, exact-price purchase, cancellation and seller proceeds withdrawal.
 - FR-P3: Redacted source-prompt access follows verified NFT ownership or the seller’s active escrow listing. Research dataset licensing remains separate.
 - Future: public sharing/OG cards, durable public asset hosting and a reviewed public wall require their own rollout work; placeholder/demo routes do not establish these services.
+
+### 5.6 Social (friends)
+
+- FR-S1: Every signed-in account has one private friend code (8 characters from an unambiguous alphabet, shown as `XXXX-XXXX`). Players share it themselves; there is no name, email or directory search, so accounts cannot be enumerated.
+- FR-S2: Entering a valid code sends a friend request. If the other person already requested you, the request is accepted instead. Only the invited account can accept or decline; only the sender can cancel; either friend can remove the friendship. Other accounts receive "not found" for requests that are not theirs.
+- FR-S3: A declined request is hidden from both people and the sender cannot resend it. The player who declined can still invite the sender later.
+- FR-S4: A player can regenerate their code; the old code stops working immediately. Existing friendships are unaffected.
+- FR-S5: Friend responses contain only an opaque friendship ID, display name, chosen candy profile picture URL and a timestamp. They never include email, account ID, wallet, role, heists, collection or research data.
+- FR-S6: Limits are enforced on the server: 200 friends, 50 pending outgoing requests, and 10 unknown-code attempts per account per 10 minutes (HTTP 429).
+- FR-S7: A friendship grants no access to another person's heists, wallet, candies, prompts or research records, and has no effect on attempts, grading, rewards or NFT eligibility. Messaging, presence, gifting, trading between friends, blocking/reporting and notifications are not part of this version.
 
 ## 6. System Architecture
 
@@ -236,6 +248,11 @@ Config (hot-reloadable, versioned): `WIN_THRESHOLD`, `rubric_version`, `caspy_pr
 | POST   | `/research/samples/{id}/review`, `/research/releases` | Human review and reviewed dataset publication |
 | POST   | `/datasets/{id}/request`, `/research/orders/{id}/decision` | Manual licensing requests and access grants |
 | GET    | `/datasets/{id}/export` | Authorized, consent-filtered JSON export |
+| GET    | `/account/heists/{id}` | Owner-only saved transcript, outcome and reward (current or archived season) |
+| POST   | `/account/avatar` | Set or clear an owned-candy profile picture (`token_id` or null); no transaction |
+| GET    | `/social` | Own friend code, friends, incoming and outgoing requests |
+| POST   | `/social/requests`, `/social/code` | Send a request by friend code; regenerate own code |
+| POST   | `/social/requests/{id}/accept`, `/decline`, `/cancel`, `/social/friends/{id}/remove` | Respond to, withdraw or end a friendship |
 | POST   | `/auth/nonce`              | Issue SIWE nonce                                                                             |
 | POST   | `/auth/verify`             | Verify SIWE, set session cookie                                                              |
 | POST   | `/game/session`            | Create/fetch active session for wallet                                                       |
@@ -374,7 +391,7 @@ Before a public deployment: independent contract/security review, durable asset 
 
 ## 11. Frontend Specification
 
-- Implemented routes: Landing, Dashboard, Login, Register, Account, Play, Result/Claim, Collection, Marketplace, How to play, Research, Datasets, Gallery, Rules, Privacy and Terms. A route existing does not imply every production integration in this document is enabled.
+- Implemented routes: Landing, Dashboard, Heist history (`/heists`), Social (`/social`, signed-in only), Login, Register, Account, Play, Result/Claim, Collection, Marketplace, How to play, Research, Datasets, Gallery, Rules, Privacy and Terms. A route existing does not imply every production integration in this document is enabled.
 - How-to-play film: 100 seconds, ten chapters, animated website screenshots and typography, synchronized captions/chapters, Halloween music and wordless choir, no voiceover. Detailed player/researcher guides and an optional local-only quiz accompany it. Tutorial rewards use labeled fictional data; see section 22.4.
 - Chat UX: streamed text, typing "boo" animation, attempts as 3 candy icons, disabled input during stream, clear errors.
 - Implemented wallet UX: explicit local-test-wallet selection/loading, SIWE authentication and transaction feedback. MetaMask/WalletConnect, network switching and ENS are future integration work; local mode currently uses unlocked Anvil accounts.
@@ -1053,3 +1070,64 @@ language guidance, rather than alarming error styling or fake progress. A
 network failure is not treated as account expiry. Status checks may retry;
 generation, signing and financial actions never retry automatically. See
 docs/loading-profile-review-2026-11-08.md for tested coverage and browser limits.
+
+## Social friends amendment — 8 November 2026
+
+Requirements FR-S1 to FR-S7 (section 5.6) are implemented. Players add each other
+with a private friend code; the feature is separate from the game, rewards,
+research consent and wallets.
+
+Implementation: `scripts/social_store.py` (routes under `/social`, handled by the
+existing account router, so every call needs a signed-in session and, for POST,
+the website origin and an `Idempotency-Key`). Two private tables, `friend_codes`
+and `friendships`, are created at startup. On PostgreSQL both have row-level
+security enabled and all access revoked from `PUBLIC`, `anon` and `authenticated`.
+A friendship has one row per pair with states pending, accepted or declined; a
+declined row is kept only to stop the sender from resending. Unknown-code attempts
+reuse the sign-in attempt log for the 10-per-10-minutes limit, and are counted
+even though the request fails. Friend, accept, decline, cancel, remove and code-reset
+actions write metadata-only audit entries (no code values). The frontend page is
+`/social` (`Social.tsx`); a friend's picture reuses the candy profile-picture URL.
+
+Validation on 8 November: 7 new backend tests on a temporary store and the same
+cases on a disposable private Supabase schema (8 tests, including the table
+privilege check), 4 new frontend tests, type check and production build, and all
+four CI jobs. The feature is merged to `main` but was **not deployed** to the
+live preview at the time of writing (live backend and frontend were on `342e66e`).
+No browser walkthrough of the page was possible, so layout, mobile view and focus
+order are unverified.
+
+Limits and open work: no blocking, reporting, notifications or friend profiles;
+a declined sender gets a generic "cannot be sent" message, which reveals that a
+relationship row exists; friend codes are bearer secrets, so anyone holding one
+can send that person a request until it is regenerated.
+
+## Delivery, branches and operations amendment — 8 November 2026
+
+- **Branches.** Pull request #1 (24 commits from `codex/cloud-preview-20261106`) was
+  merged into `main` as `d298c48` after all four CI jobs passed. `main` is protected:
+  changes need a pull request (zero approvals, since the project has one owner), the
+  four CI jobs must pass, and force-push and deletion are blocked. Administrators can
+  still bypass the rules. The feature branch is protected against force-push and
+  deletion only. The merge did not deploy: the release job is gated by
+  `CASPY_CLOUD_RELEASE_ENABLED=false`.
+- **Automatic release is still off.** The workflow, project variables and a
+  `production` environment exist, but the Vercel deploy token was not set and the
+  Codespaces token was not confirmed. Enabling release still requires one complete
+  deployed run of wallet, play, grade, image, mint, list, purchase and payout, and
+  the seller-payout discrepancy from 5 November remains unresolved.
+- **Preview hosting.** The frontend is on Vercel and the API proxy forwards to a
+  GitHub Codespaces backend. This is a demo: the Codespace stops after 30 minutes
+  idle, and its forwarded port can return to private, which makes the proxy return
+  502 or 401. On 8 November the preview was unavailable until the backend was started
+  again with the release helper and port 8000 was made public. Only port 8000 is
+  public. This amendment does not change the "not 24/7 hosting" limit.
+- **Live revisions** at the time of writing: backend `342e66e` (read from the health
+  endpoint after the restart); frontend last recorded at `342e66e` and not re-checked
+  that day; v3 contracts on Base Sepolia as recorded in the v3 activation notes.
+- **README.** The repository README was rewritten to match this PRD (no failure NFT,
+  Python standard-library API, Supabase, Bifrost, Base Sepolia preview) and now
+  includes a banner, four labelled walkthrough screenshots and the how-to-play video.
+  Its images are generated from the app's own artwork by
+  `scripts/build_readme_assets.py`. The screenshots use fictional tutorial data and
+  show no real win or transaction.
