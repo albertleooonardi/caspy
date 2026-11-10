@@ -15,6 +15,8 @@ RUN cd /app/frontend && npm ci --omit=dev \
 COPY scripts/ /app/scripts/
 COPY frontend/scripts/nft-bridge.mjs /app/frontend/scripts/nft-bridge.mjs
 COPY frontend/src/lib/contract.ts /app/frontend/src/lib/contract.ts
+COPY frontend/src/lib/chainEvents.ts /app/frontend/src/lib/chainEvents.ts
+RUN node --experimental-strip-types --input-type=module -e "await import('./frontend/src/lib/contract.ts'); await import('./frontend/src/lib/chainEvents.ts');"
 COPY bifrost.config.example.json /app/bifrost.config.example.json
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \

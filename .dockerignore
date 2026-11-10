@@ -12,4 +12,5 @@
 !frontend/src/
 !frontend/src/lib/
 !frontend/src/lib/contract.ts
+!frontend/src/lib/chainEvents.ts
 !bifrost.config.example.json
