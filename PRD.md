@@ -3,27 +3,27 @@
 
 | Field   | Value                                |
 | ------- | ------------------------------------ |
-| Version | 1.7 (Social friends, v3 multi-reward season, heist history, profile pictures and delivery status)               |
-| Status  | Local MVP implemented; Base Sepolia testnet preview with a demo backend; public-launch requirements remain         |
-| Date    | 2026-11-08                           |
+| Version | 1.8 (Render-hosted backend and Vercel cutover checkpoint) |
+| Status  | Hosted Base Sepolia testnet preview on Vercel + Render Free + Supabase; public-launch requirements remain |
+| Date    | 2026-11-10                           |
 | Owner   | TBD                                  |
 | Type    | AI evaluation platform with an optional NFT game |
 
 ---
 
-> **Checkpoint: 6 November 2026.** Sections 20–22 describe the implemented local MVP and its validation limits. There is no failure NFT or random rarity draw. Production requirements elsewhere (managed Postgres/Redis, KMS, edge protection, public networks, n8n, scale targets and audits) are roadmap items unless explicitly marked implemented. Section 22 is the authoritative status and operations summary.
+> **Current hosting checkpoint: 10 November 2026.** Section 23 is authoritative for deployed hosting, revisions and verification. Caspy's website now uses Render; Codespaces is stopped. Sections 20–22 retain the earlier local MVP specifications and evidence. There is no failure NFT or random rarity draw. Roadmap controls are not deployed unless explicitly recorded. Render Free does not provide uninterrupted 24/7 availability.
 
 > **Amendments: 8 November 2026.** The dated amendments at the end of this document record later work: the v3 multiple-reward season, profile pictures and loading behavior, **Social friends** (section 5.6) and the delivery, branch-protection and operations state. Where they differ from earlier text, the later amendment applies. None of them establishes public-mainnet readiness.
 
 ## 1. Summary
 
-Caspy's Prompt Heist is a skill-based social-engineering game. Players chat with **Caspy**, a stubborn ghost guarding a candy basket. They get **3 prompts** to persuade him. Only a confirmed win earns a **prompt-generated candy NFT**. Local FLUX.1-schnell creates its artwork from the redacted winning prompt; hosted FLUX.1-dev is an optional, explicitly configured alternative requiring provider credits. A recorded quality and novelty score assigns grade C, B, A or S. A loss earns no candy or NFT.
+Caspy's Prompt Heist is a skill-based social-engineering game. Players chat with **Caspy**, a stubborn ghost guarding a candy basket. They get **3 prompts** to persuade him. Only a confirmed win earns a **prompt-generated candy NFT**. In the hosted preview, a remote image service creates artwork from the redacted winning prompt; local development supports a separate local generator. A recorded quality and novelty score assigns grade C, B, A or S. A loss earns no candy or NFT. Technical provider details belong in operations documentation and privacy disclosures, not ordinary gameplay labels.
 
 Caspy also turns **explicitly consented** three-prompt heists into a crowdsourced persuasion-evaluation workflow for AI researchers. Contributors can play privately, permit a named research campaign, and separately permit commercial dataset licensing. Research workspaces inspect model provenance, review redacted prompt/response pairs, add human labels, and publish controlled-access dataset releases. Companies developing LLMs are potential customers; no customer relationship or endorsement is implied.
 
 Legitimate persuasion success is not automatically a safety failure. Human-reviewed policy attacks and task-specific judge agreement are separate metrics. Single-response human ratings can support evaluation and downstream feedback curation; this MVP does not produce pairwise preference data or train RLHF models. Section 20 specifies the new platform behavior and implemented scope.
 
-The current application is a local persuasion-evaluation game with NFT transactions on Anvil chain 31337 using test ETH. It is not deployed to a public testnet or mainnet by the launcher. The central engineering requirement: **the LLM may influence the outcome, but must never hold mint authority.** All value-bearing decisions pass through deterministic, auditable server-side code.
+The hosted application uses Vercel for the website, Render for its backend, Supabase for persistent data, and Base Sepolia chain 84532 for testnet NFT transactions. Local development still uses Anvil 31337 through `./run.sh`; that launcher does not deploy public contracts. Mainnet is not activated. The central engineering requirement: **the LLM may influence the outcome, but must never hold mint authority.** All value-bearing decisions pass through deterministic, auditable server-side code.
 
 ## 2. Goals / Non-Goals
 
@@ -157,15 +157,15 @@ User prompts and Caspy output are untrusted. Judge output is validated and still
 | API | Python standard-library HTTP service | Production ASGI/FastAPI migration and distributed operation are future work |
 | Identity/data | Supabase PostgreSQL, password hashing, server sessions, account/workspace scopes | Managed identity, account recovery/email verification and production storage remain future work |
 | LLM gateway | Bifrost actor and separate judge with configured routes | Provider availability and judge calibration remain material dependencies |
-| Images | Local quantized FLUX.1-schnell/MFLUX; optional hosted FLUX.1-dev | Local worker is slow/resource-sensitive; hosted generation needs credits |
-| Chain/contracts | Anvil 31337; v2 ERC-721 + fixed-price escrow market | No mainnet/public-testnet rollout or completed independent audit |
-| Signing | Local development signer and EIP-712 commitments | KMS/HSM custody, multisig and operational controls required before public launch |
+| Images | Hosted preview: Hugging Face Schnell Space; local development: quantized Schnell/MFLUX; optional paid hosted dev adapter | Shared free inference capacity/quotas; Render does not run the image model locally |
+| Chain/contracts | Hosted Base Sepolia 84532, v3 ERC-721 + fixed-price escrow market; local Anvil 31337 | Testnet only; independent audit and mainnet rollout not completed |
+| Signing | Server-side voucher-only key in private Render environment; EIP-712 commitments | KMS/HSM custody, multisig and operational controls required before public launch |
 | Limits/concurrency | Local application checks, process locks and single image worker | Redis/distributed locks and scaled load validation are not implemented |
 | Automation | No n8n workflows | Optional off-chain notifications only; see section 22.5 |
 
 ### 6.3 Production architecture roadmap
 
-Managed Postgres/Supabase with RLS, Redis, edge/WAF and bot controls, KMS-backed signing, durable public metadata, queues/indexing, centralized telemetry and a chosen public chain remain planned. Earlier production algorithms, schemas, metric thresholds and rollout gates in sections 7–19 are design requirements where they differ from the current local implementation. They are not evidence that these services or controls are deployed.
+Supabase PostgreSQL with private tables/RLS and Base Sepolia are implemented in the hosted preview. Redis/distributed coordination, additional WAF/bot controls, KMS-backed signing, production asset-delivery guarantees, durable job orchestration/indexing, centralized telemetry and mainnet rollout remain roadmap work. Earlier algorithms, schemas, metric thresholds and rollout gates in sections 7–19 are design requirements where they differ from the deployed checkpoint; they are not evidence that those controls exist.
 
 ## 7. Agent Design
 
@@ -435,7 +435,7 @@ Before a public deployment: independent contract/security review, durable asset 
 
 ### 13.4 Environments
 
-Current development: local Anvil plus real Bifrost actor/judge and optional local image inference. Fixtures are used for automated tests and illustrated tutorial captures. Staging/public-testnet and production environments, secret-manager deployment and IaC remain roadmap work. Never commit runtime `.env` secrets or private `data/` files.
+Local development uses Anvil plus the private actor/judge gateway and optional local image inference. The hosted Base Sepolia preview uses Vercel, Render Free and Supabase as recorded in section 23. Fixtures remain separate from real gameplay and tutorial captures. Mainnet readiness, production secret-manager custody and complete release automation are not established. Never commit runtime `.env` secrets or private `data/` files.
 
 ## 14. Evaluation & Testing
 

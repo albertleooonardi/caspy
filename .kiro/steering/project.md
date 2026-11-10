@@ -1,13 +1,69 @@
 # Caspy's Prompt Heist — Project Steering
 
-Checkpoint: **8 November 2026** (later dated sections below supersede earlier
+Checkpoint: **10 November 2026** (later dated sections below supersede earlier
 ones where they differ). This file is the continuation guide for Kiro.
 Read the implementation before changing behavior; distinguish completed work,
 observed QA, and future production requirements. Full requirements:
-#[[file:PRD.md]], especially sections 20–22. Older architecture proposals in the
+#[[file:PRD.md]], especially sections 20–23. Older architecture proposals in the
 PRD/README are not proof that a service is implemented or deployed.
 
-Cloud deployment preparation is now in progress: read
+## Current hosting — authoritative checkpoint, 10 November 2026
+
+**Caspy is hosted and the website now uses Render, not Codespaces.** This describes
+the Caspy application in this Kiro repository; the Kiro editor itself is not a
+hosted application. This section supersedes the historical hosting/recovery notes
+below. Read #[[file:docs/render-deployment-2026-11-10.md]] before deployment work.
+
+| Component | Current host / location | Operational notes |
+| --- | --- | --- |
+| Frontend and same-origin API proxy | Vercel: https://caspy-prompt-heist.vercel.app | Astro/React; project `caspy-prompt-heist`; production `CASPY_BACKEND_URL=https://caspy-api.onrender.com` |
+| Game/account/research API and private AI gateway | Render Free, Singapore: https://caspy-api.onrender.com | Docker service `caspy-api`, `srv-dbphrkbm8hqs73dvee30`; one API replica; gateway listens only on loopback |
+| Accounts, sessions, profiles, Social, research, game snapshots and saved artwork/metadata | Existing Supabase PostgreSQL project | Private server-side access/RLS; separate gateway config/log roles. Custom Caspy authentication, not Supabase Auth. No runtime SQLite |
+| Actor and independent judge inference | Google Gemini API through the private gateway | Server-only provider keys; free-tier quotas still apply |
+| Candy image inference | Official Hugging Face Schnell Space | `hf-space-schnell`; remote generation, not a GPU on Render; shared capacity/quotas can delay or reject jobs |
+| Candy NFT and marketplace contracts | Base Sepolia testnet, chain 84532 | Existing v3 contracts; test ETH only; see addresses below |
+| Source and automated checks | GitHub: https://github.com/albertleooonardi/caspy | CI checks run; automatic production release remains gated/off |
+| n8n | Not hosted or integrated | Placeholder only; not required to run Caspy |
+| Previous backend | GitHub Codespaces | `caspy-nft-demo-wrj7666wxrvp2vw5` confirmed **Shutdown**; no longer used by the website |
+
+Render workspace is **Albert Leonardi (Leo)'s Workspace** (`tea-csp8pb3gbbvc73a92f3g`),
+under the user's leogatsuma account. Service dashboard:
+https://dashboard.render.com/web/srv-dbphrkbm8hqs73dvee30.
+
+- Backend source: `dd6c0f3ebb90782458a3f1808c1ba76ef715bd62`; Render deploy
+  `dep-dbpi2b9srm7s73ar78eg`. Docker context/image includes `chainEvents.ts` and
+  build-time NFT helper import checks. All four CI check categories passed.
+- Vercel production redeploy `PedVGNA4kUNK9ZsodQzLhFpTMQL6` reused existing
+  frontend source `342e66e` with the new backend URL. Do not assume frontend and
+  backend are on the same revision, or that newer Social frontend changes are live.
+- With Codespaces stopped, website `/api/health` returned 200 with the Render
+  source SHA, chain 84532 and minting enabled; `/api/candy/config` returned 200
+  with existing v3 addresses; anonymous `/api/account/me` returned expected 401.
+  These checks do not certify a new signed-in play/image/mint/trade/payout run.
+- Current candy: `0x13cc9bb8ede8f77e4552715040555b924558c690`; marketplace:
+  `0xa6ab784124e952d478d3dd2a2475e1353a934ec5`. Preserve contracts, signer,
+  deployment identity, saved rewards and accounts; do not redeploy/reset them
+  to recover a hosting outage.
+- **Free hosting is not 24/7.** Render Free sleeps after inactivity and wakes on
+  incoming requests; startup can be slow. Provider quotas are separate. Never
+  promise uninterrupted service or add keepalive/quota-bypass jobs.
+- Keep Codespaces stopped. Snapshot storage supports only **one writer per
+  deployment namespace**. Before replacing the API, check zero in-flight turns
+  and generating artwork jobs, stop the old writer, then reload saved snapshots.
+- Credentials are private Render environment variables; never commit/print them.
+  A container restart must retain Supabase persistence. Keep the same-origin
+  Vercel proxy, secure cookies, server-owned reward checks and private gateway.
+- Remaining operations: configure Render's HTTP `/health` check (currently default
+  TCP), complete signed-in/browser QA, and repair Vercel connector access when
+  needed. Cutover used the signed-in UI and user-completed email verification;
+  do not weaken account protections. No new production deployment token was set.
+- `./run.sh` remains the local development launcher. Agents must still follow
+  the development-server restrictions elsewhere in this guide; local setup is
+  separate from hosted Render operation.
+
+## Historical hosting preparation and earlier checkpoints
+
+At the earlier checkpoint, cloud deployment preparation was in progress: read
 #[[file:docs/cloud-deployment.md]] before hosting work. The user requires full NFT
 gameplay, approved Base Sepolia preparation and selected Render free in My
 Workspace after Railway rejected project creation (expired trial). Vercel project
