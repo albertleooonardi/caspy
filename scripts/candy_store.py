@@ -49,6 +49,20 @@ class HostedFlux:
 
 
 class CandyStore:
+    FAILURES={
+        'authentication':'Hugging Face rejected HF_TOKEN. Check the server-side token; your earned grade is saved.',
+        'permission':'Hugging Face denied access. Check Inference Providers permission and model/provider access; your earned grade is saved.',
+        'billing':'Hugging Face requires provider credits or billing before it can generate this image. Your earned grade is saved.',
+        'rate_limit':'The image provider is rate-limiting requests. Try again later; your earned grade is saved.',
+        'local_configuration':'Local Schnell is not prepared. Run bash scripts/shell/setup-flux.sh and restart Caspy. Your grade is saved.',
+        'local_timeout':'Local generation exceeded 20 minutes on this Mac. Your grade is saved; close other apps before an explicit retry.',
+        'local_generation':'Local Schnell could not finish. Check available memory and the local model setup. Your grade is saved.',
+        'configuration':'The hosted image client is not configured. Check HF_TOKEN and install scripts/requirements-candy.txt.',
+        'space_quota':'The free image Space is out of quota or denied this request. Your grade is saved. Retry later; no paid fallback was used.',
+        'space_unavailable':'The free image Space is unavailable or its API changed. Your grade is saved. No paid fallback was used.',
+        'space_timeout':'The free image Space did not finish within the request window. It may still be processing. Your grade is saved; check status before explicitly retrying.',
+    }
+
     def __init__(self,platform,nft,root=None,renderer=None):
         self.platform,self.nft=platform,nft
         self.origin=public_origin(environment(ROOT))
@@ -85,6 +99,10 @@ class CandyStore:
                 self.remove_wallet_limit(db)
             # Never silently repeat a possibly billed request after a crash/restart.
             db.execute("UPDATE candy_jobs SET state='uncertain',error='A prior image request was interrupted. Retry explicitly; hosted requests may use provider credits again.' WHERE state='generating' AND namespace=?",(self.namespace,))
+
+            # Heists locked while quota refusals still counted as attempts
+            # regain their last attempt; later refusals are refunded in _run.
+            db.execute("UPDATE candy_jobs SET attempts=2 WHERE state='failed' AND attempts>=3 AND error=? AND namespace=?",(self.FAILURES['space_quota'],self.namespace))
 
     def close(self): self.pool.shutdown(wait=True)
 
@@ -234,20 +252,11 @@ class CandyStore:
         except Exception as error:
             uncertain=str(error) in ('uncertain','space_timeout')
             safe='The image request was interrupted; retrying may use provider credits again.' if uncertain else 'The provider could not return an acceptable candy image. Check configuration, credits and safety filters. Your grade has not changed.'
-            safe={
-                'authentication':'Hugging Face rejected HF_TOKEN. Check the server-side token; your earned grade is saved.',
-                'permission':'Hugging Face denied access. Check Inference Providers permission and model/provider access; your earned grade is saved.',
-                'billing':'Hugging Face requires provider credits or billing before it can generate this image. Your earned grade is saved.',
-                'rate_limit':'The image provider is rate-limiting requests. Try again later; your earned grade is saved.',
-                'local_configuration':'Local Schnell is not prepared. Run bash scripts/shell/setup-flux.sh and restart Caspy. Your grade is saved.',
-                'local_timeout':'Local generation exceeded 20 minutes on this Mac. Your grade is saved; close other apps before an explicit retry.',
-                'local_generation':'Local Schnell could not finish. Check available memory and the local model setup. Your grade is saved.',
-                'configuration':'The hosted image client is not configured. Check HF_TOKEN and install scripts/requirements-candy.txt.',
-                'space_quota':'The free image Space is out of quota or denied this request. Your grade is saved. Retry later; no paid fallback was used.',
-                'space_unavailable':'The free image Space is unavailable or its API changed. Your grade is saved. No paid fallback was used.',
-                'space_timeout':'The free image Space did not finish within the request window. It may still be processing. Your grade is saved; check status before explicitly retrying.',
-            }.get(str(error),safe)
-            with self.platform.db() as db: db.execute('UPDATE candy_jobs SET state=?,error=? WHERE id=?',('uncertain' if uncertain else 'failed',safe,ident))
+            safe=self.FAILURES.get(str(error),safe)
+            # A quota refusal produced no image, so it does not use up one of
+            # the heist's attempts. It still counts toward the daily budget.
+            refund=1 if str(error)=='space_quota' else 0
+            with self.platform.db() as db: db.execute('UPDATE candy_jobs SET state=?,error=?,attempts=CASE WHEN attempts>=? THEN attempts-? ELSE 0 END WHERE id=?',('uncertain' if uncertain else 'failed',safe,refund,refund,ident))
         finally:
             with self.progress_lock: self.job_progress.pop(ident,None)
 

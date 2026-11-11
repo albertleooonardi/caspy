@@ -1,7 +1,9 @@
 """Quota-limited official FLUX Schnell Space. No paid inference fallback.
 
 The public Space receives the redacted art prompt after the game's explicit
-generation consent. Anonymous calls do not attach HF_TOKEN or billing credentials.
+generation consent. When the server has HF_TOKEN, it is sent only to the
+official Space origin so ZeroGPU quota is counted against that account rather
+than the host's shared IP address; without it, calls are anonymous.
 The remote API can queue, throttle, fail or change; failures preserve the reward.
 """
 import json
@@ -15,11 +17,12 @@ import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
 
-from bifrost_setup import NoRedirect
+from bifrost_setup import NoRedirect, environment
 
 SPACE = 'black-forest-labs/FLUX.1-schnell'
 ORIGIN = 'https://black-forest-labs-flux-1-schnell.hf.space'
 LIMIT = 15_000_000
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class SpaceSchnell:
@@ -28,17 +31,24 @@ class SpaceSchnell:
     local = False
     configured = True
 
+    def __init__(self, token=None):
+        self.token = environment(ROOT).get('HF_TOKEN', '') if token is None else token
+
     def render(self, prompt, seed, target):
         return self.render_with_progress(prompt, seed, target, lambda phase: None)
 
     def render_with_progress(self, prompt, seed, target, progress):
+        # A malformed value must never reach a request header.
+        if self.token and not re.fullmatch(r'hf_[A-Za-z0-9]{8,200}', self.token):
+            raise RuntimeError('authentication')
+        account = {'Authorization': 'Bearer ' + self.token} if self.token else {}
         opener = urllib.request.build_opener(NoRedirect())
         deadline = time.monotonic() + 240
 
         def read(path, body=None):
             request = urllib.request.Request(ORIGIN + path,
                 data=None if body is None else json.dumps(body).encode(),
-                headers={'Content-Type': 'application/json', 'User-Agent': 'Caspy-Demo/1.0'})
+                headers={'Content-Type': 'application/json', 'User-Agent': 'Caspy-Demo/1.0', **account})
             with opener.open(request, timeout=30) as response:
                 raw = response.read(LIMIT + 1)
             if len(raw) > LIMIT:
@@ -54,7 +64,7 @@ class SpaceSchnell:
             progress('waiting_provider')
             result = None
             request = urllib.request.Request(ORIGIN + '/gradio_api/call/infer/' + event,
-                headers={'Accept':'text/event-stream','User-Agent':'Caspy-Demo/1.0'})
+                headers={'Accept':'text/event-stream','User-Agent':'Caspy-Demo/1.0', **account})
             # Consume complete SSE events immediately; waiting for EOF can hang
             # even after the provider has already returned the finished image.
             with opener.open(request, timeout=30) as response:
@@ -94,6 +104,7 @@ class SpaceSchnell:
                 if normalized.returncode:
                     raise RuntimeError('invalid_image')
         except urllib.error.HTTPError as error:
+            if error.code == 401 and self.token: raise RuntimeError('authentication') from None
             raise RuntimeError('space_quota' if error.code in (401, 403, 429) else 'space_unavailable') from None
         except TimeoutError:
             raise RuntimeError('space_timeout') from None
@@ -105,4 +116,4 @@ class SpaceSchnell:
                 'steps': 4, 'width': 512, 'height': 512, 'space': SPACE,
                 'safety_checker': False,
                 'content_controls': 'win gate and candy-only art direction; no verified image safety classifier',
-                'prompt_processing': 'public third-party Space; anonymous quota; no paid fallback'}
+                'prompt_processing': 'public third-party Space; ' + ('account' if self.token else 'anonymous') + ' quota; no paid fallback'}

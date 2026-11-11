@@ -124,6 +124,32 @@ class CandyTests(unittest.TestCase):
         self.assertEqual(row['attempts'],1)
         self.assertIsNone(row['image_hash'])
         self.assertIsNone(row['metadata_hash'])
+    def test_quota_refusal_does_not_use_up_an_image_attempt(self):
+        self.earn()
+        with patch.object(self.renderer,'render',side_effect=RuntimeError('space_quota')):
+            self.candy.generate('one',self.user,True)
+            self.candy.pool.shutdown(wait=True)
+        row=self.candy.row('one')
+        self.assertEqual(row['state'],'failed')
+        self.assertIn('out of quota',row['error'])
+        self.assertEqual(row['attempts'],0)
+        # The provider call still counts toward the daily budget.
+        self.assertEqual(self.candy.config()['image_requests_today'],1)
+
+    def test_heist_locked_by_earlier_quota_refusals_regains_one_attempt(self):
+        self.earn()
+        quota=CandyStore.FAILURES['space_quota']
+        with self.platform.db() as db:
+            db.execute("UPDATE candy_jobs SET state='failed',attempts=3,error=? WHERE id='one'",(quota,))
+            db.execute("INSERT INTO candy_jobs SELECT 'two',user_id,namespace,wallet,prompt,'other-hash','other-normalized',assessment,'failed',3,NULL,NULL,NULL,seed,created,'Some other failure.',NULL FROM candy_jobs WHERE id='one'")
+        self.candy.close()
+        self.candy=CandyStore(self.platform,FakeNFT(),self.root/'assets',self.renderer)
+        self.assertEqual(self.candy.row('one')['attempts'],2)
+        self.assertEqual(self.candy.row('two')['attempts'],3)
+        self.candy.generate('one',self.user,True,True)
+        self.candy.pool.shutdown(wait=True)
+        self.assertEqual(self.candy.row('one')['state'],'ready')
+
     def test_interruption_explicit_retry_and_budget(self):
         self.earn()
         with self.platform.db() as db: db.execute("UPDATE candy_jobs SET state='uncertain' WHERE id='one'")

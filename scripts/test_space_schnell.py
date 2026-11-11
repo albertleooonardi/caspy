@@ -9,7 +9,7 @@ from space_schnell import SpaceSchnell, ORIGIN
 
 
 class SpaceSchnellTests(unittest.TestCase):
-    def run_fixture(self, image_url=ORIGIN+'/gradio_api/file=/tmp/candy.png', seed=42, kind='complete', linger=False):
+    def run_fixture(self, image_url=ORIGIN+'/gradio_api/file=/tmp/candy.png', seed=42, kind='complete', linger=False, token=''):
         raw = io.BytesIO()
         image = Image.new('RGB', (512,512), (245,220,250))
         image.paste((80,30,100), (100,100,400,400))
@@ -27,7 +27,7 @@ class SpaceSchnellTests(unittest.TestCase):
                 return EventStream(value+b'event: error\ndata: null\n\n') if linger and len(calls)==2 else io.BytesIO(value)
         with tempfile.TemporaryDirectory() as folder, patch('space_schnell.urllib.request.build_opener',return_value=Opener()):
             target=Path(folder)/'image.png'
-            report=SpaceSchnell().render('Fictional sugar moon',42,target)
+            report=SpaceSchnell(token=token).render('Fictional sugar moon',42,target)
             with Image.open(target) as result:
                 self.assertEqual(result.size,(512,512)); self.assertEqual(result.info,{})
         return calls,report
@@ -39,6 +39,26 @@ class SpaceSchnellTests(unittest.TestCase):
         self.assertTrue(all(not request.has_header('Authorization') for request in calls))
         self.assertEqual(report['provider'],'huggingface-zerogpu-space')
         self.assertFalse(report['safety_checker'])
+
+    def test_account_token_is_sent_only_to_the_official_space(self):
+        calls,_=self.run_fixture(token='hf_'+'a'*34)
+        self.assertEqual(len(calls),3)
+        self.assertTrue(all(request.full_url.startswith(ORIGIN+'/') for request in calls))
+        self.assertTrue(all(request.get_header('Authorization')=='Bearer hf_'+'a'*34 for request in calls))
+
+    def test_malformed_token_is_never_sent(self):
+        with patch('space_schnell.urllib.request.build_opener') as build:
+            with self.assertRaisesRegex(RuntimeError,'authentication'):
+                SpaceSchnell(token='hf_bad\r\nX-Injected: 1').render('Fictional test candy',42,Path('unused.png'))
+            self.assertEqual(build.return_value.open.call_count,0)
+
+    def test_rejected_token_is_reported_as_authentication_not_quota(self):
+        import urllib.error
+        for token,kind in (('hf_'+'a'*34,'authentication'),('','space_quota')):
+            with self.subTest(token=bool(token)), patch('space_schnell.urllib.request.build_opener') as build:
+                build.return_value.open.side_effect=urllib.error.HTTPError(ORIGIN,401,'Unauthorized',{},None)
+                with self.assertRaisesRegex(RuntimeError,kind):
+                    SpaceSchnell(token=token).render('Fictional test candy',42,Path('unused.png'))
 
     def test_untrusted_download_and_seed_changes_are_rejected(self):
         for url in ('https://attacker.example/file.png',ORIGIN+'@attacker.example/file.png',ORIGIN+'/unexpected.png'):
@@ -58,5 +78,5 @@ class SpaceSchnellTests(unittest.TestCase):
         with patch('space_schnell.urllib.request.build_opener') as build:
             build.return_value.open.side_effect=urllib.error.URLError(TimeoutError())
             with self.assertRaisesRegex(RuntimeError,'space_timeout'):
-                SpaceSchnell().render('Fictional test candy',42,Path('unused.png'))
+                SpaceSchnell(token='').render('Fictional test candy',42,Path('unused.png'))
             self.assertEqual(build.return_value.open.call_count,1)
