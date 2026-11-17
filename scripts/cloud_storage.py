@@ -25,6 +25,17 @@ class DatabaseSnapshots:
         with self.platform.db() as db:
             db.execute('INSERT INTO game_snapshots(namespace,payload) VALUES (?,?) ON CONFLICT(namespace) DO UPDATE SET payload=excluded.payload',(self.namespace,payload))
 
+    def find_many(self, idents):
+        # One pass over every namespace for the history list. Called only with
+        # heist IDs the account already owns. Returns {id: (data, current_season)}.
+        wanted,found=set(idents),{}
+        with self.platform.db() as db:
+            rows=db.execute('SELECT namespace,payload FROM game_snapshots').fetchall()
+        for row in rows:
+            payload=json.loads(row['payload'])
+            for ident in wanted & payload.keys():
+                found.setdefault(ident,(payload[ident]['data'],row['namespace']==self.namespace))
+        return found
     def find_recorded(self, ident):
         # Called only after the account's contribution ownership is checked.
         with self.platform.db() as db:
