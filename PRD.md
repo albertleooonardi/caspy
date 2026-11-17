@@ -1104,6 +1104,15 @@ can send that person a request until it is regenerated.
 
 ## Delivery, branches and operations amendment — 8 November 2026
 
+> Later correction, 17 November 2026: a contributor who creates a research
+> workspace retains unlimited completed-heist replay. Research authorization
+> and replay entitlement are separate. Private `replay_access` persists the
+> entitlement; migration restores it only for contributors or accounts with a
+> recorded workspace conversion. Direct researcher registration does not grant
+> unlimited replay. Both fresh-heist creation and restored session responses use
+> the server-authenticated capability. Existing histories, rewards, consent,
+> three prompts per heist and one NFT per eligible winning heist remain intact.
+
 - **Branches.** Pull request #1 (24 commits from `codex/cloud-preview-20261106`) was
   merged into `main` as `d298c48` after all four CI jobs passed. `main` is protected:
   changes need a pull request (zero approvals, since the project has one owner), the

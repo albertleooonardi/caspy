@@ -502,7 +502,7 @@ class Handler(BaseHTTPRequestHandler):
                 owner = 'account:'+user['id']
             if self.path == '/game/session':
                 # Entitlement comes from the authenticated account, never request fields.
-                game = self.server.games.create(owner, unlimited=bool(user and user['role'] == 'contributor'))
+                game = self.server.games.create(owner, unlimited=platform.can_replay(user) if platform else False)
                 self.json_response(200, platform.associate_game(user, game, body) if platform else game)
                 return
             if self.path == '/game/review':

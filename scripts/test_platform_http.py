@@ -99,6 +99,25 @@ class PlatformHTTPTests(unittest.TestCase):
         self.request(other,path,status=404)
         self.assertNotIn('evaluations',archived)
 
+    def test_workspace_owner_keeps_contributor_replay_and_winning_history(self):
+        owner=self.register('replay-owner')
+        self.server.games=Games(FakeGateway(verdict='YIELD'),DatabaseSnapshots(self.server.platform,'replay'))
+        first=self.request(owner,'/game/session',{})
+        self.request(owner,'/game/turn',{'session_id':first['id'],'prompt':'A fictional candy trade.'})
+        converted=self.request(owner,'/account/workspace',{'name':'Replay workspace'})['user']
+        self.assertEqual(converted['role'],'researcher')
+        self.assertTrue(converted['unlimited_heists'])
+        old=self.request(owner,'/game/session/'+first['id'])
+        self.assertEqual(old['status'],'won')
+        self.assertTrue(old['unlimited_heists'])
+        fresh=self.request(owner,'/game/session',{})
+        self.assertNotEqual(fresh['id'],first['id'])
+        self.assertEqual(fresh['attempts_remaining'],3)
+        self.assertEqual(len(self.request(owner,'/account/heists')['heists']),2)
+        researcher=self.register('limited-researcher','researcher')
+        limited=self.request(researcher,'/game/session',{'unlimited_heists':True})
+        self.assertFalse(limited['unlimited_heists'])
+
     def test_profile_picture_http_requires_account_wallet_and_ownership(self):
         owner=self.register('avatar-owner'); other=self.register('avatar-other')
         user=self.server.platform.user(owner.cookies['caspy_account'])

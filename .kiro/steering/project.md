@@ -9,6 +9,15 @@ PRD/README are not proof that a service is implemented or deployed.
 
 ## Current hosting — authoritative checkpoint, 10 November 2026
 
+**Replay permission correction, 17 November:** contributor replay is a separate
+server-owned capability in private `replay_access`, not just the research role.
+Creating a workspace retains it. Startup backfills existing contributors and
+accounts with a recorded `create_workspace` audit action; native researcher
+registrations keep daily limits. `Platform.can_replay` drives both game creation
+and the session's `unlimited_heists` flag. Never trust request-body replay flags.
+Existing heists/rewards remain saved; three prompts and one reward per winning
+heist are unchanged. Read the deployed release status before assuming activation.
+
 **Caspy is hosted and the website now uses Render, not Codespaces.** This describes
 the Caspy application in this Kiro repository; the Kiro editor itself is not a
 hosted application. This section supersedes the historical hosting/recovery notes
