@@ -289,6 +289,59 @@ class Platform:
                 result['reward']={'state':reward['state'],'grade':assessment['grade_label'],'score':assessment['score'],'token_id':reward['token_id']}
         return result
 
+    def hosted_snapshot_ids(self, idents):
+        # Local stacks keep transcripts in a JSON file but may share the account
+        # database with the hosted site. Report which heists were saved there so
+        # the page can say so; transcripts themselves are not read.
+        try:
+            with self.db() as db:
+                rows=db.execute('SELECT payload FROM game_snapshots').fetchall()
+        except Exception:  # The table exists only where a hosted backend has run.
+            return set()
+        wanted,found=set(idents),set()
+        for row in rows:
+            found |= wanted & json.loads(row['payload']).keys()
+        return found
+
+    def recorded_heists(self, user, server):
+        """Summaries of every heist the account owns, for the history list."""
+        with self.db() as db:
+            links=[dict(r) for r in db.execute('SELECT c.session_id,c.research,c.withdrawn,c.created,p.name campaign_name FROM contributions c LEFT JOIN campaigns p ON p.id=c.campaign_id WHERE c.user_id=? ORDER BY c.created DESC',(user['id'],))]
+            rewards={}
+            if getattr(server,'candy',None):
+                for row in db.execute('SELECT id,state,assessment,token_id FROM candy_jobs WHERE user_id=?',(user['id'],)):
+                    assessment=json.loads(row['assessment'])
+                    rewards[row['id']]={'state':row['state'],'grade':assessment['grade_label'],'score':assessment['score'],'token_id':row['token_id']}
+        games=server.games
+        ids=[link['session_id'] for link in links]
+        with games.lock:
+            live={ident:games.sessions[ident]['data'] for ident in ids if ident in games.sessions}
+        missing=[ident for ident in ids if ident not in live]
+        archived,elsewhere={},set()
+        if missing and hasattr(games.store,'find_many'):
+            archived=games.store.find_many(missing)
+        elif missing:
+            elsewhere=self.hosted_snapshot_ids(missing)
+        def summary(data):
+            # Read without the heist lock: a running turn holds it for the whole
+            # model call, and these scalar reads cannot corrupt anything.
+            first=next((m['text'] for m in list(data.get('messages') or []) if m.get('role')=='user'),'')
+            return {'status':data.get('status'),'prompts_used':3-int(data.get('attempts_remaining',3)),'preview':first[:120]}
+        result=[]
+        for link in links:
+            ident=link['session_id']
+            item={**link,'reward':rewards.get(ident)}
+            if ident in live:
+                item.update(summary(live[ident]),transcript='available',current_season=True)
+            elif ident in archived:
+                data,current=archived[ident]
+                item.update(summary(data),transcript='available',current_season=current)
+            else:
+                item.update(status=None,prompts_used=None,preview=None,current_season=False,
+                            transcript='hosted' if ident in elsewhere else 'unavailable')
+            result.append(item)
+        return result
+
     def decorate(self, game, user):
         link = self.owns_game(user, game['id'])
         return {**game, 'unlimited_heists': user['role'] == 'contributor', 'research_consent': bool(link['research'] and not link['withdrawn']), 'commercial_consent': bool(link['commercial'] and not link['withdrawn']), 'campaign_id': link['campaign_id']}
@@ -490,6 +543,8 @@ class Platform:
                 result=self.social.respond(user,path.split('/')[3],path.split('/')[4])
             elif re.fullmatch(r'/social/friends/[^/]+/remove',path) and post:
                 result=self.social.respond(user,path.split('/')[3],'remove')
+            elif path=='/account/heists' and not post:
+                result={'heists':self.recorded_heists(user,handler.server)}
             elif path.startswith('/account/heists/') and not post:
                 ident=text(path.removeprefix('/account/heists/'),'Heist ID',1,100)
                 result=self.recorded_heist(user,ident,handler.server)
