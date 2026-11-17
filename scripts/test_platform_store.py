@@ -219,8 +219,32 @@ class PlatformTests(unittest.TestCase):
     def test_contributor_can_create_only_their_own_workspace(self):
         result=self.route('/account/workspace',self.player_token,{'name':'My new lab','org_id':self.owner['org_id'],'role':'admin'})
         self.assertEqual(result['user']['role'],'researcher')
+        self.assertTrue(result['user']['unlimited_heists'])
         self.assertNotEqual(result['user']['org_id'],self.owner['org_id'])
         self.assertEqual(self.store.dashboard(result['user'])['samples'],[])
+
+    def test_workspace_replay_access_migrates_and_survives_restart(self):
+        game=self.game(research=False,commercial=False)
+        self.route('/account/workspace',self.player_token,{'name':'Replay lab'})
+        # Simulate the old deployment, which changed role without saving replay.
+        with self.store.db() as db:
+            db.execute('DELETE FROM replay_access WHERE user_id=?',(self.player['id'],))
+        migrated=Platform(self.path)
+        restored=migrated.user(self.player_token)
+        self.assertEqual(restored['role'],'researcher')
+        self.assertTrue(migrated.decorate(game,restored)['unlimited_heists'])
+        self.assertEqual(migrated.dashboard(restored)['samples'],[])
+        self.assertFalse(migrated.user(self.owner_token)['unlimited_heists'])
+        self.assertEqual(Platform(self.path).user(self.player_token)['org_id'],restored['org_id'])
+        if migrated.database.postgres:
+            with migrated.db() as db:
+                self.assertTrue(db.execute("SELECT relrowsecurity FROM pg_class WHERE oid='replay_access'::regclass").fetchone()[0])
+                for role in ('anon','authenticated'):
+                    self.assertFalse(db.execute("SELECT has_table_privilege(?, 'replay_access', 'INSERT')",(role,)).fetchone()[0])
+
+    def test_registration_cannot_choose_replay_permission(self):
+        _,user=self.register('native-researcher','researcher',unlimited_heists=True)
+        self.assertFalse(user['unlimited_heists'])
 
     def test_common_identifiers_and_keys_redacted(self):
         raw='hello https://private.example/path www.private.example person@example.com 192.168.1.2 sk-privateabcdefghijklm 0x'+'ab'*20
