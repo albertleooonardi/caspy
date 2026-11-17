@@ -136,6 +136,28 @@ class CandyTests(unittest.TestCase):
         # The provider call still counts toward the daily budget.
         self.assertEqual(self.candy.config()['image_requests_today'],1)
 
+    def test_refunded_quota_refusals_cannot_drain_the_shared_daily_budget(self):
+        self.earn()
+        with patch.object(self.renderer,'render',side_effect=RuntimeError('space_quota')):
+            for retry in (False,True,True):
+                self.candy.generate('one',self.user,True,retry)
+                self.candy.pool.shutdown(wait=True)
+                self.candy.pool=type(self.candy.pool)(max_workers=1)
+            with self.assertRaises(Fault) as refused: self.candy.generate('one',self.user,True,True)
+        self.assertEqual(refused.exception.status,429)
+        self.assertIn('today',refused.exception.detail)
+        self.assertEqual(self.candy.row('one')['attempts'],0)
+        self.assertEqual(self.candy.config()['image_requests_today'],3)
+
+    def test_denied_or_failed_generation_still_uses_an_attempt(self):
+        self.earn()
+        with patch.object(self.renderer,'render',side_effect=RuntimeError('space_denied')):
+            self.candy.generate('one',self.user,True)
+            self.candy.pool.shutdown(wait=True)
+        row=self.candy.row('one')
+        self.assertIn('denied',row['error'])
+        self.assertEqual(row['attempts'],1)
+
     def test_heist_locked_by_earlier_quota_refusals_regains_one_attempt(self):
         self.earn()
         quota=CandyStore.FAILURES['space_quota']

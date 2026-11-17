@@ -59,6 +59,7 @@ class CandyStore:
         'local_generation':'Local Schnell could not finish. Check available memory and the local model setup. Your grade is saved.',
         'configuration':'The hosted image client is not configured. Check HF_TOKEN and install scripts/requirements-candy.txt.',
         'space_quota':'The free image Space is out of quota or denied this request. Your grade is saved. Retry later; no paid fallback was used.',
+        'space_denied':'The free image Space denied this request. Your grade is saved. No paid fallback was used.',
         'space_unavailable':'The free image Space is unavailable or its API changed. Your grade is saved. No paid fallback was used.',
         'space_timeout':'The free image Space did not finish within the request window. It may still be processing. Your grade is saved; check status before explicitly retrying.',
     }
@@ -217,6 +218,10 @@ class CandyStore:
                 if row['attempts']>=3: raise Fault(429,'Image retry limit reached. No rerolls or further provider calls are allowed.')
                 used=db.execute('SELECT count(*) FROM candy_attempts WHERE created>=?',(int(time.time())//86400*86400,)).fetchone()[0]
                 if used>=self.budget: raise Fault(429,'The daily image-generation budget is exhausted. Your earned grade is saved.')
+                # Refunded quota refusals do not use up attempts, so bound the
+                # provider calls one heist can make from the shared daily budget.
+                mine=db.execute('SELECT count(*) FROM candy_attempts WHERE job_id=? AND created>=?',(ident,int(time.time())//86400*86400)).fetchone()[0]
+                if mine>=3: raise Fault(429,'This heist has reached its image requests for today. Your earned grade is saved; try again tomorrow.')
                 db.execute("UPDATE candy_jobs SET state='generating',attempts=attempts+1,error=NULL WHERE id=?",(ident,))
                 db.execute('INSERT INTO candy_attempts VALUES (?,?)',(ident,int(time.time())))
         if existing_request: return self.public(row)

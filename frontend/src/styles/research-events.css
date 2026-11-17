@@ -1,0 +1,91 @@
+/* Research campaigns presented as joinable events on the heist page. */
+.research-events {
+  margin: 0 0 28px;
+  padding: 26px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, #fbf7ff, var(--surface) 60%);
+  box-shadow: var(--shadow);
+}
+.research-events-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 32px;
+  margin-bottom: 20px;
+}
+.research-events-head .eyebrow { display: inline-flex; align-items: center; gap: 6px; }
+.research-events-head h2 { margin: 8px 0 0; font-size: 24px; }
+.research-events-head p { max-width: 440px; margin: 0; font-size: 14px; line-height: 1.7; color: var(--muted); }
+.research-events-note { margin: 0; font-size: 14px; color: var(--muted); }
+
+.research-events-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.event-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 20px;
+  border: 1.5px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  transition: border-color .2s, box-shadow .2s, transform .2s;
+}
+.event-card:hover { border-color: #cbb8db; transform: translateY(-2px); box-shadow: 0 10px 26px #38244712; }
+.event-card.selected { border-color: var(--purple); box-shadow: 0 0 0 3px #74518f26; }
+.event-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: #f1e9f8;
+  color: var(--purple);
+}
+.event-private .event-icon { background: #f3f1f5; color: var(--muted); }
+.event-tag { margin-top: 14px; font-size: 11px; font-weight: 700; letter-spacing: .08em; color: #5f4a6c; overflow-wrap: anywhere; }
+.event-card h3 { margin: 6px 0 8px; font-size: 18px; line-height: 1.3; }
+.event-card p { flex: 1; margin: 0 0 16px; font-size: 13px; line-height: 1.7; color: var(--muted); }
+.event-description { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.event-card .button { align-self: flex-start; }
+
+.event-join {
+  margin-top: 20px;
+  padding: 22px;
+  border: 1.5px dashed #cbb8db;
+  border-radius: 16px;
+  background: var(--surface);
+}
+.event-join-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.event-join-head h3 { margin: 0; font-size: 18px; }
+.event-join-head h3:focus { outline: none; }
+.event-join-head h3:focus-visible { outline: 2px solid var(--purple); outline-offset: 4px; border-radius: 4px; }
+.event-join > p { margin: 10px 0 14px; font-size: 14px; line-height: 1.7; color: var(--muted); }
+.event-join .platform-check + .platform-check { margin-top: 10px; }
+.event-join small { display: block; margin-top: 14px; font-size: 12px; line-height: 1.7; color: var(--muted); }
+.event-join small a { color: var(--purple); text-decoration: underline; }
+.event-status { display: flex; align-items: center; gap: 8px; margin: 16px 0 0; padding: 10px 14px; border-radius: 12px; background: #f6f2f9; font-size: 13px; color: #5f4a6c; }
+.event-status.ready { background: #e9f6ee; color: #23603c; }
+
+.event-joined { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 18px; padding: 12px 16px; border-radius: 14px; background: #f1e9f8; font-size: 14px; color: #4b3359; }
+.event-joined a { color: var(--purple); text-decoration: underline; }
+
+@media (max-width: 600px) {
+  .research-events { padding: 18px; }
+  .research-events-head h2 { font-size: 20px; }
+  .research-events-list { grid-template-columns: 1fr; }
+  .event-join { padding: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .event-card { transition: none; }
+  .event-card:hover { transform: none; }
+}
