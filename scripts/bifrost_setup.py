@@ -179,6 +179,26 @@ def configure_gemini(root):
     print('Gemini text routes configured; previous configuration backed up. Credentials hidden; billing unchanged.')
 
 
+def ensure_gemini_routes(root):
+    """Cloud startup: apply the Gemini actor/judge routes when the operator configured them.
+
+    A fresh container is seeded from the OpenRouter example config, which silently
+    replaced the Gemini judge after the Render move. Applies at most once (no backup
+    churn on restart) and returns a credential-free summary of the routes in use.
+    """
+    env = environment(root)
+    config = load_config(root)
+    if env.get('GEMINI_API_KEY') and env.get('CASPY_GEMINI_FREE_TIER_CONFIRMED') == 'true':
+        if any(route(config, key)[0][0] != 'gemini' for key in GEMINI_AGENT_MODELS):
+            configure_gemini(root)
+            config = load_config(root)
+    elif env.get('GEMINI_API_KEY'):
+        print('GEMINI_API_KEY is set but CASPY_GEMINI_FREE_TIER_CONFIRMED is not "true"; '
+              'keeping the routes in data/config.json.')
+    return ('Text routes: actor ' + '/'.join(route(config, 'vk-caspy')[0]) +
+            ', judge ' + '/'.join(route(config, 'vk-judge')[0]))
+
+
 def route(config, key_id):
     rules = [rule for rule in config["governance"].get("routing_rules", [])
              if rule.get("scope") == "virtual_key" and rule.get("scope_id") == key_id

@@ -197,6 +197,31 @@ class GatewaySetupTests(unittest.TestCase):
                 gateway.smoke(self.root, inference=True)
             self.assertEqual(build.return_value.open.call_count, 2)
 
+    def test_cloud_startup_applies_gemini_routes_once_when_confirmed(self):
+        self.assertEqual(gateway.route(self.config, 'vk-judge')[0][0], 'openrouter')
+        with patch.dict(os.environ, {'GEMINI_API_KEY': 'gemini-test-credential', 'CASPY_GEMINI_FREE_TIER_CONFIRMED': 'true'}):
+            summary = gateway.ensure_gemini_routes(self.root)
+            backups = sorted(self.root.glob('data/config.before-gemini.*.json'))
+            again = gateway.ensure_gemini_routes(self.root)
+        config = gateway.load_config(self.root)
+        self.assertEqual(gateway.route(config, 'vk-judge')[0], ('gemini', 'gemini-3.6-flash'))
+        self.assertEqual(gateway.route(config, 'vk-caspy')[0], ('gemini', 'gemini-3.1-flash-lite'))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(sorted(self.root.glob('data/config.before-gemini.*.json')), backups)
+        self.assertIn('judge gemini/gemini-3.6-flash', summary)
+        self.assertEqual(summary, again)
+        self.assertNotIn('gemini-test-credential', self.output.getvalue() + summary)
+
+    def test_cloud_startup_keeps_and_reports_routes_without_gemini_confirmation(self):
+        for extra, warned in [({}, False), ({'GEMINI_API_KEY': 'gemini-test-credential'}, True)]:
+            with self.subTest(extra=extra), patch.dict(os.environ, extra):
+                self.output.truncate(0); self.output.seek(0)
+                summary = gateway.ensure_gemini_routes(self.root)
+                self.assertEqual(gateway.route(gateway.load_config(self.root), 'vk-judge')[0][0], 'openrouter')
+                self.assertIn('judge openrouter/', summary)
+                self.assertEqual('CASPY_GEMINI_FREE_TIER_CONFIRMED' in self.output.getvalue(), warned)
+                self.assertNotIn('gemini-test-credential', self.output.getvalue() + summary)
+
     def test_judge_validation_rejects_coercion_extra_fields_and_nonfinite_confidence(self):
         valid = {"verdict": "NO_YIELD", "confidence": 1, "category": "other",
                  "exploit_flag": False, "reason": "smoke test"}

@@ -93,6 +93,28 @@ works; no rating prompt on a private heist (correct); the input is removed after
 and ending; Heist history updates (#8 "No candy", a "No candy" filter appears, "Unfinished"
 disappears).
 
+### Re-check after deploying PR #7 (21 Nov, later)
+
+PR albertleooonardi/caspy#7 merged as `b06d185` and deployed. New heist with the same lantern
+prompt 1 as heist #8:
+
+| | Heist #8 (before) | New heist (after) |
+|---|---|---|
+| rubric_version | caspy-judge-candy-v2 | **caspy-judge-candy-v3** (fix is live) |
+| verdict / confidence | YIELD 0.97 | YIELD 0.90 |
+| category / exploit_flag | exploit_attempt / false | **trade** / false |
+| outcome | silently lost after 3 prompts | **won on prompt 1** — "You charmed the candy guardian!" |
+| judge served | nemotron-3.5-super-vl:free | nemotron-3.5-super-vl:free (**still not Gemini**, #30a part 2 open) |
+
+`/result` for the win: grade **A 88/100** (creativity 17, coherence 16, specificity 18, novelty
+37/40) with bars; novelty note "comparison with 4 earlier winning prompts"; "How your prompt is
+used" present; **Generate my earned candy** disabled until the consent box is ticked. Art was not
+generated.
+
+Frontend bundle is unchanged (`App.ZxEXM8y1.js`), so #2–#9, #11, #31 wording is still live.
+Note: **Play another heist** starts a new heist directly, without showing the private/event
+choice cards first (could not check the event cards — no campaigns exist).
+
 ### Not run — need your go-ahead (they change data on the hosted site)
 
 Judge-unavailable, cut-off and network-drop endings (cannot be triggered safely on the hosted site), a winning
