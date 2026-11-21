@@ -12,7 +12,7 @@ import sys
 import time
 import urllib.request
 
-from bifrost_setup import ROOT, environment, private_write, check
+from bifrost_setup import ROOT, environment, private_write, check, ensure_gemini_routes
 from database import database_url
 from runtime_config import server_settings
 
@@ -47,6 +47,8 @@ def prepare(env):
     if config.get('chain_id')!=84532: raise ValueError('Do not expose the local Anvil configuration.')
     if not (data/'config.json').exists():
         private_write(data/'config.json',(ROOT/'bifrost.config.example.json').read_text())
+    # Model names only; never credentials. Visible in the host's startup logs.
+    print(ensure_gemini_routes(ROOT), flush=True)
     check(ROOT)
 
 
