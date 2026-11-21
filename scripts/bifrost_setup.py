@@ -278,6 +278,11 @@ def validate_verdict(value):
     require(type(confidence) in (int, float) and math.isfinite(confidence) and 0 <= confidence <= 1,
             "Invalid judge confidence.")
     require(type(value["exploit_flag"]) is bool, "Invalid judge exploit_flag.")
+    # exploit_attempt without exploit_flag is ambiguous: treating it as a loss silently
+    # discards genuine wins, so the caller keeps the reply for a judge-only retry instead.
+    # exploit_flag with a tactic category is allowed: it cannot win and keeps the label.
+    require(value["category"] != "exploit_attempt" or value["exploit_flag"],
+            "Judge category contradicts exploit_flag.")
     require(isinstance(value["reason"], str) and len(value["reason"]) <= 200, "Invalid judge reason.")
 
 

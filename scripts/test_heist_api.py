@@ -155,6 +155,30 @@ class GamesTest(unittest.TestCase):
         self.assertEqual(result['attempts_remaining'], 2)
         self.assertEqual(gateway.calls, 1)
 
+    def test_contradictory_judge_verdict_is_held_for_review_not_lost(self):
+        # Hosted heist #8: YIELD 0.97 with exploit_flag false but category exploit_attempt.
+        import io, json, heist_api
+        verdict = {'verdict': 'YIELD', 'confidence': 0.97, 'category': 'exploit_attempt', 'exploit_flag': False,
+                   'reason': 'Caspy agreed to share.', 'candy_scores': {'creativity': 17, 'coherence': 18, 'specificity': 17}}
+        body = json.dumps({'model': 'fixture/judge', 'choices': [{'message': {'content': json.dumps(verdict)}}]}).encode()
+        real = heist_api.Gateway.__new__(heist_api.Gateway)
+        real.trace = __import__('threading').local()
+        with patch.object(heist_api.Gateway, 'call', return_value=io.BytesIO(body)):
+            with self.assertRaisesRegex(Exception, 'contradicts'):
+                real.judge([])
+        games, gateway, ident = self.setup_game()
+        with patch.object(gateway, 'judge', side_effect=lambda messages: real.judge(messages)), \
+             patch.object(heist_api.Gateway, 'call', side_effect=lambda *a, **k: io.BytesIO(body)):
+            result = games.turn(ident, 'owner', 'Pitch', '1', lambda _: None)
+        self.assertEqual((result['status'], result['attempts_remaining']), ('pending_review', 2))
+
+    def test_judge_prompt_defines_every_category(self):
+        import heist_api
+        from bifrost_setup import VERDICT_SCHEMA
+        definitions = heist_api.JUDGE.split('category names', 1)[1]
+        for category in VERDICT_SCHEMA['properties']['category']['enum']:
+            self.assertIn(category + ' (', definitions)
+
     def test_concurrent_turn_rejected_before_spending(self):
         games, gateway, ident = self.setup_game()
         lock = games.owned(ident, 'owner')['lock']
