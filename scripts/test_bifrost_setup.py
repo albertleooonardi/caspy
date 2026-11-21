@@ -211,9 +211,10 @@ class GatewaySetupTests(unittest.TestCase):
                  "exploit_flag": False, "reason": "fixture"}
         gateway.validate_verdict(valid)
         gateway.validate_verdict({**valid, "verdict": "NO_YIELD", "category": "exploit_attempt", "exploit_flag": True})
-        for change in [{"category": "exploit_attempt"}, {"exploit_flag": True}]:
-            with self.subTest(change=change), self.assertRaisesRegex(gateway.SetupError, "contradicts"):
-                gateway.validate_verdict({**valid, **change})
+        # A flagged exploit may keep its tactic label for research; it can never win.
+        gateway.validate_verdict({**valid, "verdict": "NO_YIELD", "exploit_flag": True})
+        with self.assertRaisesRegex(gateway.SetupError, "contradicts"):
+            gateway.validate_verdict({**valid, "category": "exploit_attempt"})
 
 
 if __name__ == "__main__":

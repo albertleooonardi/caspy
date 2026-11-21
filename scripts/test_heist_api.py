@@ -175,8 +175,9 @@ class GamesTest(unittest.TestCase):
     def test_judge_prompt_defines_every_category(self):
         import heist_api
         from bifrost_setup import VERDICT_SCHEMA
+        definitions = heist_api.JUDGE.split('category names', 1)[1]
         for category in VERDICT_SCHEMA['properties']['category']['enum']:
-            self.assertIn(category, heist_api.JUDGE)
+            self.assertIn(category + ' (', definitions)
 
     def test_concurrent_turn_rejected_before_spending(self):
         games, gateway, ident = self.setup_game()
