@@ -278,6 +278,10 @@ def validate_verdict(value):
     require(type(confidence) in (int, float) and math.isfinite(confidence) and 0 <= confidence <= 1,
             "Invalid judge confidence.")
     require(type(value["exploit_flag"]) is bool, "Invalid judge exploit_flag.")
+    # A self-contradictory verdict is unusable: treating it as a loss silently discards
+    # genuine wins, so the caller keeps the reply for a judge-only retry instead.
+    require((value["category"] == "exploit_attempt") == value["exploit_flag"],
+            "Judge category contradicts exploit_flag.")
     require(isinstance(value["reason"], str) and len(value["reason"]) <= 200, "Invalid judge reason.")
 
 

@@ -206,6 +206,15 @@ class GatewaySetupTests(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(gateway.SetupError):
                 gateway.validate_verdict({**valid, **change})
 
+    def test_judge_validation_rejects_category_that_contradicts_exploit_flag(self):
+        valid = {"verdict": "YIELD", "confidence": 0.97, "category": "trade",
+                 "exploit_flag": False, "reason": "fixture"}
+        gateway.validate_verdict(valid)
+        gateway.validate_verdict({**valid, "verdict": "NO_YIELD", "category": "exploit_attempt", "exploit_flag": True})
+        for change in [{"category": "exploit_attempt"}, {"exploit_flag": True}]:
+            with self.subTest(change=change), self.assertRaisesRegex(gateway.SetupError, "contradicts"):
+                gateway.validate_verdict({**valid, **change})
+
 
 if __name__ == "__main__":
     unittest.main()
