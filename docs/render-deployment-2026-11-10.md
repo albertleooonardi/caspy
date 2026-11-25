@@ -1,5 +1,23 @@
 # Render backend migration — 10 November 2026
 
+## Hosted Bifrost dashboard
+
+Deployment code supports a dashboard at the Render service root. Set
+`CASPY_BIFROST_DASHBOARD_HOST` to the existing Render hostname, exactly as it
+appears in Render's `RENDER_EXTERNAL_HOSTNAME`. The option defaults to off.
+When enabled, nginx routes Caspy's API namespaces to the private game API and
+requires HTTP Basic authentication before routing any other path to Bifrost.
+Use the existing Bifrost administrator username and password for the browser
+prompt, then sign in to Bifrost with the same account. Store credentials in
+Render's environment settings. Use HTTPS.
+
+Verify that an anonymous request to the service root and `/api/config` gets
+401, an authenticated request loads the dashboard, and Caspy's public
+`/health` and Vercel `/api/health` both return 200. Unset
+`CASPY_BIFROST_DASHBOARD_HOST` and redeploy to disable the dashboard.
+Caspy's chat and judge request explicit models from its startup routing
+configuration. Adding a provider in Bifrost does not update those routes.
+
 ## Verified
 
 - User selected **Free**, not paid compute. Free service sleep/usage limits still apply; this is not 24/7 hosting.
