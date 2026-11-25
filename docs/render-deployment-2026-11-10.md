@@ -18,6 +18,12 @@ Verify that an anonymous request to the service root and `/api/config` gets
 Caspy's chat and judge request explicit models from its startup routing
 configuration. Adding a provider in Bifrost does not update those routes.
 
+With the Gemini free tier enabled, Caspy chat starts with Gemini 3.5 Flash-Lite.
+When `OPEN_ROUTER_API_KEY` is set, the chat route falls back to OpenRouter's
+free Nemotron 3.5 Lightning. The judge keeps its separate Gemini route and
+virtual key. If OpenRouter is unconfigured, chat falls back to Gemini 3.1
+Flash-Lite. Check Render's `Text routes:` startup line for the selected route.
+
 ## Verified
 
 - User selected **Free**, not paid compute. Free service sleep/usage limits still apply; this is not 24/7 hosting.

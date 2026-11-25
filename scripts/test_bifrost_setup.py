@@ -58,9 +58,23 @@ class GatewaySetupTests(unittest.TestCase):
             gateway.validate(config,env)
         for store in ('config_store','logs_store'): self.assertEqual(config[store],before[store])
         self.assertEqual(config['governance']['auth_config'],before['governance']['auth_config'])
-        self.assertEqual(config['governance']['budgets'],before['governance']['budgets'])
-        for agent in gateway.AGENTS:
-            self.assertEqual(gateway.route(config,agent),[('gemini',model) for model in gateway.GEMINI_AGENT_MODELS[agent]])
+        new_budgets = {row['id']: row for row in config['governance']['budgets']}
+        for row in before['governance']['budgets']:
+            self.assertEqual(new_budgets[row['id']], row)
+        self.assertEqual(gateway.route(config, 'vk-caspy'), [
+            ('gemini', 'gemini-3.5-flash-lite'),
+            ('openrouter', 'nvidia/nemotron-3.5-lightning:free'),
+        ])
+        self.assertEqual(gateway.route(config, 'vk-judge'), [
+            ('gemini', 'gemini-3.6-flash'), ('gemini', 'gemini-2.5-flash'),
+        ])
+        self.assertNotIn('openrouter', {
+            row['provider'] for row in config['governance']['virtual_keys'][1]['provider_configs']
+        })
+        self.assertEqual(
+            {row['reset_duration'] for row in new_budgets.values()
+             if row.get('model_config_id') == 'caspy-global-openrouter-fallback'}, {'1h', '1d'}
+        )
         self.assertEqual(config['providers']['gemini']['keys'][0]['value'],'env.GEMINI_API_KEY')
         self.assertTrue(list((self.root/'data').glob('config.before-gemini.*.json')))
         self.assertNotIn('gemini-test-credential',json.dumps(config)+self.output.getvalue())
@@ -205,12 +219,25 @@ class GatewaySetupTests(unittest.TestCase):
             again = gateway.ensure_gemini_routes(self.root)
         config = gateway.load_config(self.root)
         self.assertEqual(gateway.route(config, 'vk-judge')[0], ('gemini', 'gemini-3.6-flash'))
-        self.assertEqual(gateway.route(config, 'vk-caspy')[0], ('gemini', 'gemini-3.1-flash-lite'))
+        self.assertEqual(gateway.route(config, 'vk-caspy')[0], ('gemini', 'gemini-3.5-flash-lite'))
         self.assertEqual(len(backups), 1)
         self.assertEqual(sorted(self.root.glob('data/config.before-gemini.*.json')), backups)
         self.assertIn('judge gemini/gemini-3.6-flash', summary)
+        self.assertIn('actor fallback openrouter/nvidia/nemotron-3.5-lightning:free', summary)
         self.assertEqual(summary, again)
         self.assertNotIn('gemini-test-credential', self.output.getvalue() + summary)
+
+    def test_gemini_route_starts_without_openrouter_credential(self):
+        (self.root / '.env').write_text(
+            (self.root / '.env').read_text().replace('OPEN_ROUTER_API_KEY=router-test-value\n', '')
+        )
+        with patch.dict(os.environ, {'GEMINI_API_KEY': 'fixture', 'CASPY_GEMINI_FREE_TIER_CONFIRMED': 'true'}):
+            gateway.configure_gemini(self.root)
+            config, env = gateway.check(self.root)
+        self.assertFalse(env.get('OPEN_ROUTER_API_KEY'))
+        self.assertEqual(gateway.route(config, 'vk-caspy'), [
+            ('gemini', 'gemini-3.5-flash-lite'), ('gemini', 'gemini-3.1-flash-lite'),
+        ])
 
     def test_cloud_startup_keeps_and_reports_routes_without_gemini_confirmation(self):
         for extra, warned in [({}, False), ({'GEMINI_API_KEY': 'gemini-test-credential'}, True)]:
