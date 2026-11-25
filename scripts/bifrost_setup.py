@@ -21,12 +21,13 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[1]
 AGENTS = ("vk-caspy", "vk-judge")
 # Explicit text-only allowlist; verify project eligibility before switching.
-# Google free-tier pricing checked 7 November 2026. Never enable billing here.
+# Google free-tier pricing checked 25 November 2026. Never enable billing here.
 GEMINI_AGENT_MODELS = {
-    'vk-caspy': ('gemini-3.1-flash-lite', 'gemini-2.5-flash-lite'),
+    'vk-caspy': ('gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'),
     'vk-judge': ('gemini-3.6-flash', 'gemini-2.5-flash'),
 }
 GEMINI_FREE_MODELS = {model for models in GEMINI_AGENT_MODELS.values() for model in models}
+OPENROUTER_CHAT_FALLBACK = 'nvidia/nemotron-3.5-lightning:free'
 VERDICT_SCHEMA = {
     "type": "object", "additionalProperties": False,
     "properties": {
@@ -148,29 +149,60 @@ def load_config(root):
     return json.loads(path.read_text())
 
 
+def gemini_text_routes(env):
+    routes = {agent: [('gemini', model) for model in models]
+              for agent, models in GEMINI_AGENT_MODELS.items()}
+    if env.get('OPEN_ROUTER_API_KEY'):
+        routes['vk-caspy'][1] = ('openrouter', OPENROUTER_CHAT_FALLBACK)
+    return routes
+
+
+def configure_global_text_budgets(governance, openrouter_fallback):
+    # Retain the existing budget IDs and balances for the already deployed Gemini route.
+    models = governance['model_configs']
+    source = next((row for row in models if row['id'] == 'caspy-global-openrouter'), None)
+    require(source is not None, 'Missing the shared text model budget configuration.')
+    source['provider'] = 'gemini'
+    fallback_id = 'caspy-global-openrouter-fallback'
+    if not openrouter_fallback or any(row['id'] == fallback_id for row in models):
+        return
+    budgets = governance['budgets']
+    fallback_budgets = [
+        {**budget, 'id': budget['id'] + '-openrouter', 'model_config_id': fallback_id}
+        for budget in budgets if budget.get('model_config_id') == source['id']
+    ]
+    budgets.extend(fallback_budgets)
+    models.append({'id': fallback_id, 'provider': 'openrouter', 'model_name': '*',
+                   'scope': 'global', 'budget_ids': [row['id'] for row in fallback_budgets]})
+
+
 def configure_gemini(root):
     env=environment(root)
     require(env.get('GEMINI_API_KEY'), 'Missing GEMINI_API_KEY (server-side only).')
     require(env.get('CASPY_GEMINI_FREE_TIER_CONFIRMED')=='true',
             'Confirm a Gemini free-tier project without billing using CASPY_GEMINI_FREE_TIER_CONFIRMED=true.')
     config=load_config(root)
+    routes = gemini_text_routes(env)
     config.setdefault('providers',{})['gemini']={
         'keys':[{'name':'caspy-gemini-key','value':'env.GEMINI_API_KEY','weight':1,'models':sorted(GEMINI_FREE_MODELS)}],
         'network_config':{'default_request_timeout_in_seconds':60,'max_retries':0},
     }
     gov=config['governance']
     for key in gov['virtual_keys']:
-        if key['id'] in GEMINI_AGENT_MODELS:
-            key['provider_configs']=[{'provider':'gemini','allowed_models':list(GEMINI_AGENT_MODELS[key['id']]),'key_ids':['*']}]
+        if key['id'] in routes:
+            allow = {}
+            for provider, model in routes[key['id']]:
+                allow.setdefault(provider, []).append(model)
+            key['provider_configs'] = [
+                {'provider': provider, 'allowed_models': models, 'key_ids': ['*']}
+                for provider, models in allow.items()
+            ]
     for rule in gov['routing_rules']:
-        if rule.get('scope')=='virtual_key' and rule.get('scope_id') in GEMINI_AGENT_MODELS:
-            primary,fallback=GEMINI_AGENT_MODELS[rule['scope_id']]
-            rule['targets']=[{'provider':'gemini','model':primary,'weight':1}]
-            rule['fallbacks']=['gemini/'+fallback]
-    for model in gov['model_configs']:
-        if model.get('scope','global')=='global' and model.get('model_name')=='*' and model.get('provider')=='openrouter':
-            # Keep stable row IDs/budget ownership when switching the provider.
-            model['provider']='gemini'
+        if rule.get('scope')=='virtual_key' and rule.get('scope_id') in routes:
+            (provider, primary), fallback = routes[rule['scope_id']]
+            rule['targets'] = [{'provider': provider, 'model': primary, 'weight': 1}]
+            rule['fallbacks'] = ['/'.join(fallback)]
+    configure_global_text_budgets(gov, routes['vk-caspy'][1][0] == 'openrouter')
     validate(config,env)
     target=root/'data/config.json'
     backup=target.with_name('config.before-gemini.'+secrets.token_hex(6)+'.json')
@@ -189,14 +221,15 @@ def ensure_gemini_routes(root):
     env = environment(root)
     config = load_config(root)
     if env.get('GEMINI_API_KEY') and env.get('CASPY_GEMINI_FREE_TIER_CONFIRMED') == 'true':
-        if any(route(config, key)[0][0] != 'gemini' for key in GEMINI_AGENT_MODELS):
+        if any(route(config, key) != models for key, models in gemini_text_routes(env).items()):
             configure_gemini(root)
             config = load_config(root)
     elif env.get('GEMINI_API_KEY'):
         print('GEMINI_API_KEY is set but CASPY_GEMINI_FREE_TIER_CONFIRMED is not "true"; '
               'keeping the routes in data/config.json.')
     return ('Text routes: actor ' + '/'.join(route(config, 'vk-caspy')[0]) +
-            ', judge ' + '/'.join(route(config, 'vk-judge')[0]))
+            ', judge ' + '/'.join(route(config, 'vk-judge')[0]) +
+            ', actor fallback ' + '/'.join(route(config, 'vk-caspy')[1]))
 
 
 def route(config, key_id):
