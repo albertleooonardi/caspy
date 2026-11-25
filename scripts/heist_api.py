@@ -8,6 +8,7 @@ import json
 import os
 import re
 import secrets
+import sys
 import threading
 import time
 import urllib.request
@@ -57,6 +58,40 @@ not decide whether the human persuaded Caspy. For NO_YIELD use zero scores.
 You have no mint or transaction authority."""
 
 
+CREDENTIAL_PATTERN = re.compile(r'AIza[\w-]{10,}|sk-[\w-]{8,}|Bearer\s+\S+|(?:key|token|password)=[^\s&,;"]+', re.I)
+ROLES = {'vk-caspy': 'actor', 'vk-judge': 'judge'}
+
+
+def log_upstream_failure(key, error, provider=None, model=None):
+    """One operator-facing line per failed AI call. Never logs prompts, transcripts or keys.
+
+    Only fields of the gateway/provider error are kept; free text is redacted and truncated.
+    """
+    status, payload = None, error
+    if isinstance(error, urllib.error.HTTPError):
+        status = error.code
+        try:
+            payload = json.loads(error.read(8192) or b'{}')
+        except (ValueError, OSError):
+            payload = {}
+    detail = payload.get('error', payload) if isinstance(payload, dict) else {}
+    extra = payload.get('extra_fields', {}) if isinstance(payload, dict) else {}
+    if not isinstance(detail, dict):
+        detail = {'message': str(detail)}
+    if not isinstance(extra, dict):
+        extra = {}
+    if isinstance(error, BaseException) and not isinstance(error, urllib.error.HTTPError):
+        detail = {'type': type(error).__name__, 'message': str(getattr(error, 'reason', error))}
+    status = status or (payload.get('status_code') if isinstance(payload, dict) else None)
+    fields = [('HTTP', status), ('provider', extra.get('provider') or provider),
+              ('model', extra.get('model_requested') or model),
+              ('type', detail.get('type') or detail.get('code')), ('message', detail.get('message'))]
+    text = '; '.join(f'{name} {value}' if name == 'HTTP' else f'{name}: {value}'
+                     for name, value in fields if value not in (None, ''))
+    text = CREDENTIAL_PATTERN.sub('[redacted]', ' '.join(text.split()))[:400]
+    print(f'AI {ROLES.get(key, key)} call failed: {text or "no details"}', file=sys.stderr, flush=True)
+
+
 class Gateway:
     def __init__(self):
         self.config, self.env = check(ROOT)
@@ -86,7 +121,11 @@ class Gateway:
         body.update(options)
         req = urllib.request.Request('http://127.0.0.1:8080/v1/chat/completions',
             data=json.dumps(body).encode(), headers={'Content-Type': 'application/json', 'x-bf-vk': self.keys[key]})
-        return self.opener.open(req, timeout=150)
+        try:
+            return self.opener.open(req, timeout=150)
+        except OSError as error:  # HTTPError, URLError and timeouts
+            log_upstream_failure(key, error, provider, model)
+            raise
 
     def actor(self, messages, emit):
         self.trace.actor_model = None
@@ -104,6 +143,7 @@ class Gateway:
                 if isinstance(chunk.get('model'), str):
                     self.trace.actor_model = chunk['model']
                 if 'error' in chunk:
+                    log_upstream_failure('vk-caspy', chunk)
                     raise ValueError('Actor failed')
                 for choice in chunk.get('choices', []):
                     token = choice.get('delta', {}).get('content') or ''

@@ -115,6 +115,30 @@ Frontend bundle is unchanged (`App.ZxEXM8y1.js`), so #2–#9, #11, #31 wording i
 Note: **Play another heist** starts a new heist directly, without showing the private/event
 choice cards first (could not check the event cards — no campaigns exist).
 
+### Gemini judge check after PR #8 (25 Nov)
+
+- Render `caspy-api` has auto-deploy **off**; live deploy `dep-dc0lpr6k1f9s739ia670` is PR #8's
+  merge commit `7564ca6` (finished 21 Nov 08:58 UTC).
+- Startup log on both container starts since then (21 Nov 08:57, 24 Nov 08:24):
+  "Gemini text routes configured…" then
+  **"Text routes: actor gemini/gemini-3.1-flash-lite, judge gemini/gemini-3.6-flash"** —
+  so `GEMINI_API_KEY` and `CASPY_GEMINI_FREE_TIER_CONFIRMED=true` are set on Render.
+- No error logs since the deploy; warnings are unrelated (no Groq key, no `git` in the image).
+- Each new container writes one `config.before-gemini.*` backup — expected, as `data/` is not
+  persistent.
+- **Live turn test (25 Nov, 13:27–13:29 UTC) — FAILED.** New heist, prompt "Hello Caspy! Could
+  I have one candy, please?" sent twice. Both times Bifrost returned **HTTP 503** to the actor
+  call (`/v1/chat/completions`, 2.6 s and 19.4 s), so neither Gemini actor model answered; the
+  judge was never reached. The UI handled it correctly: "Caspy could not finish replying…",
+  **Reconnect & check session** works, the typed prompt is restored and no prompt is spent
+  (still 3/3). These are the only completion calls logged since the Gemini switch, so **no
+  hosted turn is known to have succeeded on Gemini** — the hosted game may be unable to reply
+  for every player. The upstream reason (quota, key, model name or overload) is not in the
+  Render logs; it should be in Bifrost's log store or the Google AI Studio project.
+- Cold start on the same visit: first `/auth/me` timed out at 30 s → "We couldn't check your
+  saved sign-in. This does not mean you have been signed out." + **Check sign-in again**
+  (correct); retry answered in ~16–20 s, ~70 s total.
+
 ### Not run — need your go-ahead (they change data on the hosted site)
 
 Judge-unavailable, cut-off and network-drop endings (cannot be triggered safely on the hosted site), a winning
