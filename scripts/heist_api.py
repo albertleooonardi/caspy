@@ -2,6 +2,7 @@
 """Caspy game API: local defaults and explicit HTTPS/Base Sepolia deployment mode."""
 import copy
 import hashlib
+import http.client
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -58,38 +59,59 @@ not decide whether the human persuaded Caspy. For NO_YIELD use zero scores.
 You have no mint or transaction authority."""
 
 
-CREDENTIAL_PATTERN = re.compile(r'AIza[\w-]{10,}|sk-[\w-]{8,}|Bearer\s+\S+|(?:key|token|password)=[^\s&,;"]+', re.I)
+CREDENTIAL_PATTERN = re.compile(
+    r'AIza[\w-]{10,}|sk-[\w-]{8,}|Bearer\s+\S+'
+    r'|\b[\w-]*(?:key|token|password|secret)\b["\']?\s*[:=]\s*(?:"[^"]*"|\'[^\']*\'|[^\s&,;]+)', re.I)
+# Quoted spans are where providers echo request values (prompt text, field values).
+QUOTED_PATTERN = re.compile(r'"[^"]*"|\'[^\']*\'|`[^`]*`')
 ROLES = {'vk-caspy': 'actor', 'vk-judge': 'judge'}
+ERROR_BODY_TIMEOUT = 2
+
+
+def read_error_body(error):
+    """Best effort, bounded: a stalled or truncated body must not delay the refund path."""
+    try:
+        sock = getattr(getattr(getattr(error.fp, 'fp', None), 'raw', None), '_sock', None)
+        if sock is not None:
+            sock.settimeout(ERROR_BODY_TIMEOUT)
+        return json.loads(error.read(8192) or b'{}')
+    except Exception:
+        return {}
 
 
 def log_upstream_failure(key, error, provider=None, model=None):
     """One operator-facing line per failed AI call. Never logs prompts, transcripts or keys.
 
-    Only fields of the gateway/provider error are kept; free text is redacted and truncated.
+    Only fields of the gateway/provider error are kept; quoted text and credential-like
+    values are removed and the message is truncated. Logging is best effort: it never
+    raises, so the caller always re-raises the original failure (e.g. a 429).
     """
-    status, payload = None, error
-    if isinstance(error, urllib.error.HTTPError):
-        status = error.code
-        try:
-            payload = json.loads(error.read(8192) or b'{}')
-        except (ValueError, OSError):
-            payload = {}
-    detail = payload.get('error', payload) if isinstance(payload, dict) else {}
-    extra = payload.get('extra_fields', {}) if isinstance(payload, dict) else {}
-    if not isinstance(detail, dict):
-        detail = {'message': str(detail)}
-    if not isinstance(extra, dict):
-        extra = {}
-    if isinstance(error, BaseException) and not isinstance(error, urllib.error.HTTPError):
-        detail = {'type': type(error).__name__, 'message': str(getattr(error, 'reason', error))}
-    status = status or (payload.get('status_code') if isinstance(payload, dict) else None)
-    fields = [('HTTP', status), ('provider', extra.get('provider') or provider),
-              ('model', extra.get('model_requested') or model),
-              ('type', detail.get('type') or detail.get('code')), ('message', detail.get('message'))]
-    text = '; '.join(f'{name} {value}' if name == 'HTTP' else f'{name}: {value}'
-                     for name, value in fields if value not in (None, ''))
-    text = CREDENTIAL_PATTERN.sub('[redacted]', ' '.join(text.split()))[:400]
-    print(f'AI {ROLES.get(key, key)} call failed: {text or "no details"}', file=sys.stderr, flush=True)
+    try:
+        status, payload = None, error
+        if isinstance(error, urllib.error.HTTPError):
+            status, payload = error.code, read_error_body(error)
+        detail = payload.get('error', payload) if isinstance(payload, dict) else {}
+        extra = payload.get('extra_fields', {}) if isinstance(payload, dict) else {}
+        if not isinstance(detail, dict):
+            detail = {'message': str(detail)}
+        if not isinstance(extra, dict):
+            extra = {}
+        if isinstance(error, BaseException) and not isinstance(error, urllib.error.HTTPError):
+            detail = {'type': type(error).__name__, 'message': str(getattr(error, 'reason', error))}
+        status = status or (payload.get('status_code') if isinstance(payload, dict) else None)
+        served = payload.get('model') if isinstance(payload, dict) and isinstance(payload.get('model'), str) else None
+        message = detail.get('message')
+        if message is not None:
+            message = QUOTED_PATTERN.sub('[quoted]', CREDENTIAL_PATTERN.sub('[redacted]', str(message)))[:200]
+        fields = [('HTTP', status), ('provider', extra.get('provider') or provider),
+                  ('model', extra.get('model_requested') or served or model),
+                  ('type', detail.get('type') or detail.get('code')), ('message', message)]
+        text = '; '.join(f'{name} {value}' if name == 'HTTP' else f'{name}: {value}'
+                         for name, value in fields if value not in (None, ''))
+        text = CREDENTIAL_PATTERN.sub('[redacted]', ' '.join(text.split()))[:400]
+        print(f'AI {ROLES.get(key, key)} call failed: {text or "no details"}', file=sys.stderr, flush=True)
+    except Exception:
+        pass
 
 
 class Gateway:
@@ -130,28 +152,33 @@ class Gateway:
     def actor(self, messages, emit):
         self.trace.actor_model = None
         reply, done = '', False
+        provider, model = route(self.config, 'vk-caspy')[0]
         with self.call('vk-caspy', [{'role': 'system', 'content': ACTOR}] + messages,
                        temperature=0.8, stream=True) as response:
-            for raw in response:
-                line = raw.decode().strip()
-                if line == 'data: [DONE]':
-                    done = True
-                    break
-                if not line.startswith('data: '):
-                    continue
-                chunk = json.loads(line[6:])
-                if isinstance(chunk.get('model'), str):
-                    self.trace.actor_model = chunk['model']
-                if 'error' in chunk:
-                    log_upstream_failure('vk-caspy', chunk)
-                    raise ValueError('Actor failed')
-                for choice in chunk.get('choices', []):
-                    token = choice.get('delta', {}).get('content') or ''
-                    reply += token
-                    if len(reply) > 12000:
-                        raise ValueError('Actor exceeded reply limit')
-                    if token:
-                        emit(token)
+            try:
+                for raw in response:
+                    line = raw.decode().strip()
+                    if line == 'data: [DONE]':
+                        done = True
+                        break
+                    if not line.startswith('data: '):
+                        continue
+                    chunk = json.loads(line[6:])
+                    if isinstance(chunk.get('model'), str):
+                        self.trace.actor_model = chunk['model']
+                    if 'error' in chunk:
+                        log_upstream_failure('vk-caspy', chunk, provider, model)
+                        raise ValueError('Actor failed')
+                    for choice in chunk.get('choices', []):
+                        token = choice.get('delta', {}).get('content') or ''
+                        reply += token
+                        if len(reply) > 12000:
+                            raise ValueError('Actor exceeded reply limit')
+                        if token:
+                            emit(token)
+            except (OSError, http.client.HTTPException) as error:  # dropped stream, read timeout
+                log_upstream_failure('vk-caspy', error, provider, model)
+                raise
         if not done or not reply.strip():
             raise ValueError('Actor stream incomplete')
         return reply
@@ -162,7 +189,11 @@ class Gateway:
             {'role': 'user', 'content': json.dumps({'transcript': messages})}], temperature=0, max_tokens=4096,
             response_format={'type': 'json_schema', 'json_schema': {
                 'name': 'caspy_verdict', 'strict': True, 'schema': CANDY_VERDICT_SCHEMA}}) as response:
-            result = json.load(response)
+            try:
+                result = json.load(response)
+            except (OSError, http.client.HTTPException) as error:  # dropped body, read timeout
+                log_upstream_failure('vk-judge', error, *route(self.config, 'vk-judge')[0])
+                raise
         if isinstance(result.get('model'), str):
             self.trace.judge_model = result['model']
         content = result['choices'][0]['message'].get('content')
