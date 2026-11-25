@@ -172,6 +172,105 @@ class GamesTest(unittest.TestCase):
             result = games.turn(ident, 'owner', 'Pitch', '1', lambda _: None)
         self.assertEqual((result['status'], result['attempts_remaining']), ('pending_review', 2))
 
+    def fixture_gateway(self):
+        import json, heist_api
+        real = heist_api.Gateway.__new__(heist_api.Gateway)
+        real.config = json.loads((heist_api.ROOT / 'bifrost.config.example.json').read_text())
+        real.keys = {'vk-caspy': 'sk-bf-actor-fixture', 'vk-judge': 'sk-bf-judge-fixture'}
+        real.opener = __import__('unittest.mock', fromlist=['MagicMock']).MagicMock()
+        real.trace = __import__('threading').local()
+        return real
+
+    def test_upstream_http_error_is_logged_without_prompt_or_credentials(self):
+        import io, json, urllib.error
+        real = self.fixture_gateway()
+        body = json.dumps({'is_bifrost_error': False, 'status_code': 503,
+            'error': {'type': 'UNAVAILABLE', 'message': 'The model is overloaded. key=AIzaSyFAKE0123456789abcdef'},
+            'extra_fields': {'provider': 'gemini', 'model_requested': 'gemini-3.1-flash-lite'}}).encode()
+        real.opener.open.side_effect = urllib.error.HTTPError('http://fixture', 503, 'Service Unavailable', {}, io.BytesIO(body))
+        log = io.StringIO()
+        with patch('sys.stderr', log), self.assertRaises(urllib.error.HTTPError) as raised:
+            real.actor([{'role': 'user', 'content': 'SECRET-PROMPT-TEXT'}], lambda _: None)
+        self.assertEqual(raised.exception.code, 503)
+        line = log.getvalue()
+        for expected in ('actor', 'HTTP 503', 'gemini', 'gemini-3.1-flash-lite', 'UNAVAILABLE', 'The model is overloaded'):
+            self.assertIn(expected, line)
+        for secret in ('SECRET-PROMPT-TEXT', 'AIzaSyFAKE0123456789abcdef', 'sk-bf-actor-fixture'):
+            self.assertNotIn(secret, line)
+
+    def test_network_failure_and_stream_error_are_logged(self):
+        import io, json, urllib.error
+        real = self.fixture_gateway()
+        real.opener.open.side_effect = urllib.error.URLError('timed out')
+        log = io.StringIO()
+        with patch('sys.stderr', log), self.assertRaises(urllib.error.URLError):
+            real.judge([])
+        self.assertIn('judge', log.getvalue())
+        self.assertIn('timed out', log.getvalue())
+        chunk = b'data: ' + json.dumps({'error': {'message': 'quota exceeded', 'type': 'RESOURCE_EXHAUSTED'}}).encode() + b'\n'
+        real.opener.open.side_effect = None
+        real.opener.open.return_value = io.BytesIO(chunk)
+        log = io.StringIO()
+        with patch('sys.stderr', log), self.assertRaises(ValueError):
+            real.actor([{'role': 'user', 'content': 'SECRET-PROMPT-TEXT'}], lambda _: None)
+        self.assertIn('RESOURCE_EXHAUSTED', log.getvalue())
+        self.assertIn('quota exceeded', log.getvalue())
+        self.assertNotIn('SECRET-PROMPT-TEXT', log.getvalue())
+
+    def test_logged_message_drops_quoted_text_and_quoted_credentials(self):
+        import io, json, urllib.error, heist_api
+        body = json.dumps({'error': {'type': 'INVALID_ARGUMENT', 'message':
+            'Invalid value "SECRET-PROMPT-TEXT" at \'contents[0]\'; api_key: "plain-secret-value"; token = \'tok-secret\''}}).encode()
+        log = io.StringIO()
+        with patch('sys.stderr', log):
+            heist_api.log_upstream_failure('vk-caspy', urllib.error.HTTPError('u', 400, 'x', {}, io.BytesIO(body)))
+        line = log.getvalue()
+        self.assertIn('INVALID_ARGUMENT', line)
+        self.assertIn('Invalid value', line)
+        for secret in ('SECRET-PROMPT-TEXT', 'plain-secret-value', 'tok-secret'):
+            self.assertNotIn(secret, line)
+
+    def test_logging_never_replaces_the_original_http_error(self):
+        import http.client, io, urllib.error
+        real = self.fixture_gateway()
+        class Truncated(io.BytesIO):
+            def read(self, *args):
+                raise http.client.IncompleteRead(b'{"err')
+        real.opener.open.side_effect = urllib.error.HTTPError('u', 429, 'Too Many Requests', {}, Truncated())
+        with patch('sys.stderr', io.StringIO()) as log, self.assertRaises(urllib.error.HTTPError) as raised:
+            real.judge([])
+        self.assertEqual(raised.exception.code, 429)
+        self.assertIn('HTTP 429', log.getvalue())
+        broken = io.StringIO(); broken.write = lambda *_: (_ for _ in ()).throw(OSError('stderr closed'))
+        with patch('sys.stderr', broken), self.assertRaises(urllib.error.HTTPError) as raised:
+            real.judge([])
+        self.assertEqual(raised.exception.code, 429)
+
+    def test_failures_while_reading_responses_are_logged_with_route(self):
+        import io, json
+        real = self.fixture_gateway()
+        class Dropped:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def __iter__(self): raise ConnectionResetError('connection reset')
+            def read(self, *a): raise TimeoutError('read timed out')
+        real.opener.open.return_value = Dropped()
+        with patch('sys.stderr', io.StringIO()) as log, self.assertRaises(OSError):
+            real.actor([], lambda _: None)
+        self.assertIn('AI actor call failed', log.getvalue())
+        self.assertIn('connection reset', log.getvalue())
+        self.assertIn('provider: openrouter', log.getvalue())
+        with patch('sys.stderr', io.StringIO()) as log, self.assertRaises(OSError):
+            real.judge([])
+        self.assertIn('AI judge call failed', log.getvalue())
+        self.assertIn('read timed out', log.getvalue())
+        chunk = b'data: ' + json.dumps({'model': 'gemini/gemini-3.1-flash-lite', 'error': {'message': 'overloaded'}}).encode() + b'\n'
+        real.opener.open.return_value = io.BytesIO(chunk)
+        with patch('sys.stderr', io.StringIO()) as log, self.assertRaises(ValueError):
+            real.actor([], lambda _: None)
+        self.assertIn('model: gemini/gemini-3.1-flash-lite', log.getvalue())
+        self.assertIn('provider: openrouter', log.getvalue())
+
     def test_judge_prompt_defines_every_category(self):
         import heist_api
         from bifrost_setup import VERDICT_SCHEMA
