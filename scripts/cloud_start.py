@@ -12,8 +12,9 @@ import sys
 import time
 import urllib.request
 
-from bifrost_setup import ROOT, environment, private_write, check, ensure_gemini_routes
+from bifrost_setup import ROOT, environment, private_write, check, ensure_gemini_routes, load_config
 from database import database_url
+from hosted_dashboard import CASPY_PORT, GATEWAY_PORT, dashboard_origin, prepare_proxy
 from runtime_config import server_settings
 
 
@@ -26,7 +27,21 @@ def signal_child_group(child, sig):
         pass
 
 
-def prepare(env):
+def wait_until_ready(opener, port, label, stopped):
+    for _ in range(120):
+        if stopped():
+            raise RuntimeError(f'{label} stopped during startup.')
+        try:
+            with opener.open(f'http://127.0.0.1:{port}/health', timeout=1) as response:
+                if json.load(response).get('status') == 'ok':
+                    return
+        except (OSError, ValueError):
+            pass
+        time.sleep(1)
+    raise RuntimeError(f'{label} readiness timed out.')
+
+
+def prepare(env, dashboard=None):
     settings = server_settings(env)
     if not settings['production'] or env.get('CASPY_NFT_ENABLED') != 'true':
         raise ValueError('Cloud startup requires production mode and full NFT gameplay.')
@@ -47,6 +62,12 @@ def prepare(env):
     if config.get('chain_id')!=84532: raise ValueError('Do not expose the local Anvil configuration.')
     if not (data/'config.json').exists():
         private_write(data/'config.json',(ROOT/'bifrost.config.example.json').read_text())
+    if dashboard:
+        config = load_config(ROOT)
+        origins = config['client'].setdefault('allowed_origins', [])
+        if dashboard not in origins:
+            origins.append(dashboard)
+            private_write(data/'config.json', json.dumps(config, indent=2) + '\n')
     # Model names only; never credentials. Visible in the host's startup logs.
     print(ensure_gemini_routes(ROOT), flush=True)
     check(ROOT)
@@ -54,7 +75,9 @@ def prepare(env):
 
 def main():
     env=environment(ROOT)
-    prepare(env)
+    dashboard = dashboard_origin(env)
+    prepare(env, dashboard)
+    proxy = prepare_proxy(env, dashboard, server_settings(env)['address'][1]) if dashboard else None
     subprocess.run([sys.executable,str(ROOT/'scripts/check_supabase.py')],env=env,check=True)
     children=[]
     stopping=False
@@ -63,19 +86,18 @@ def main():
         stopping=True
         for child in children:
             signal_child_group(child, signal.SIGTERM)
+    def stopped():
+        return stopping or any(child.poll() is not None for child in children)
     signal.signal(signal.SIGTERM,stop);signal.signal(signal.SIGINT,stop)
     try:
-        children.append(subprocess.Popen(['bifrost','--app-dir',str(ROOT/'data'),'--host','127.0.0.1','--port','8080','--log-style','json','--log-level','warn'],env=env,start_new_session=True))
+        children.append(subprocess.Popen(['bifrost','--app-dir',str(ROOT/'data'),'--host','127.0.0.1','--port',str(GATEWAY_PORT),'--log-style','json','--log-level','warn'],env=env,start_new_session=True))
         opener=urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        for _ in range(120):
-            if stopping or children[0].poll() is not None: raise RuntimeError('Gateway stopped during startup.')
-            try:
-                with opener.open('http://127.0.0.1:8080/health',timeout=1) as response:
-                    if json.load(response).get('status')=='ok': break
-            except (OSError,ValueError): pass
-            time.sleep(1)
-        else: raise RuntimeError('Gateway readiness timed out.')
-        children.append(subprocess.Popen([sys.executable,str(ROOT/'scripts/heist_api.py')],env=env,start_new_session=True))
+        wait_until_ready(opener, GATEWAY_PORT, 'Gateway', stopped)
+        api_env = {**env, 'CASPY_API_HOST': '127.0.0.1', 'PORT': str(CASPY_PORT)} if proxy else env
+        children.append(subprocess.Popen([sys.executable,str(ROOT/'scripts/heist_api.py')],env=api_env,start_new_session=True))
+        if proxy:
+            wait_until_ready(opener, CASPY_PORT, 'Caspy API', stopped)
+            children.append(subprocess.Popen(proxy, env={'PATH': env['PATH']}, start_new_session=True))
         while not stopping:
             if any(child.poll() is not None for child in children): raise RuntimeError('A required service exited.')
             time.sleep(1)

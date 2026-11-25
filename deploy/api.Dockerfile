@@ -3,7 +3,7 @@ FROM python:3.11-slim-bookworm
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
-    && apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get update && apt-get install -y --no-install-recommends ca-certificates nginx openssl \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY scripts/requirements-database.txt scripts/requirements-candy.txt /tmp/requirements/
@@ -25,6 +25,7 @@ ENV PATH="/app/.venv/bin:${PATH}" \
     CASPY_NFT_ENABLED=true CASPY_NFT_CONFIG=/app/data/nft-sepolia.json \
     CASPY_IMAGE_BACKEND=hf-space-schnell CASPY_ASSET_STORAGE=postgres
 RUN mkdir -p /app/data && bifrost --help >/dev/null 2>&1
+RUN python -m unittest discover -s scripts -p test_hosted_dashboard.py -v
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s \
   CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','8000')+'/health',timeout=4)"
